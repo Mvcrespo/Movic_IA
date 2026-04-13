@@ -1,0 +1,17 @@
+{
+  "message": {
+    "source": "discord-dm:debug-user",
+    "messageId": "dbg-ferias-6",
+    "channelId": "debug-ferias-channel-5",
+    "userId": "debug-user",
+    "username": "debug",
+    "content": "Dia todo",
+    "timestamp": "2026-04-02T14:56:00Z"
+  },
+  "options": {
+    "persistState": true,
+    "persistConversation": false,
+    "executeCalendarAction": false,
+    "resetPending": false
+  }
+}

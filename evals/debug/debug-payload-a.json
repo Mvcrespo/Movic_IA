@@ -1,0 +1,17 @@
+{
+  "message": {
+    "source": "discord-dm:debug-user",
+    "messageId": "dbg-ferias-5",
+    "channelId": "debug-ferias-channel-5",
+    "userId": "debug-user",
+    "username": "debug",
+    "content": "Marca ferias para dia 4 de maio",
+    "timestamp": "2026-04-02T14:55:00Z"
+  },
+  "options": {
+    "persistState": true,
+    "persistConversation": false,
+    "executeCalendarAction": false,
+    "resetPending": true
+  }
+}

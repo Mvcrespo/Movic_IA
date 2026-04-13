@@ -1,0 +1,127 @@
+Arquitetura Atual
+
+Resumo
+- O bot recebe mensagens no Discord.
+- O Orchestrator interpreta o pedido.
+- O Calendar Service grava tudo primeiro na base de dados local.
+- Apple Calendar, Google Calendar e Notion são integrações opcionais.
+- A dashboard serve para ligar o Discord e configurar as integrações.
+
+Blocos principais
+
+1. Discord Gateway
+- Usa `discord.js`.
+- Recebe DMs em tempo real.
+- Envia mensagens para o Orchestrator.
+- Responde ao utilizador no Discord.
+- Trata comandos como `!code`, `!cancel` e `!show`.
+
+2. Orchestrator
+- É o cérebro da conversa.
+- Lê histórico e estado pendente.
+- Decide a intenção:
+  - criar
+  - listar
+  - atualizar
+  - apagar
+  - chat
+- Chama os serviços de IA.
+- Quando o pedido está completo, chama o Calendar Service.
+
+3. Serviços de IA
+- `normalizer-service`
+  - limpa e normaliza a frase
+- `llm-service`
+  - decide a intenção principal
+- `extractor-service`
+  - extrai campos do evento
+- `validator-service`
+  - valida a extração e decide se falta follow-up
+- `ollama`
+  - corre os modelos localmente
+
+4. Calendar Service
+- Guarda os eventos na base local.
+- Lista, cria, atualiza e apaga eventos.
+- É o ponto central do calendário.
+- Quando há integrações ativas, notifica os connectors.
+
+5. Postgres
+- Fonte de verdade dos eventos e da conversa.
+- Guarda:
+  - histórico
+  - pending commands
+  - eventos
+  - ligações a providers
+
+6. Dashboard Service
+- Dashboard web local.
+- Mostra estado do bot.
+- Gera código de ligação do Discord.
+- Configura Apple Calendar, Google Calendar e Notion.
+
+7. Config Postgres
+- Base separada para configurações.
+- Guarda:
+  - chat ligado
+  - utilizador ligado
+  - códigos de ligação
+  - configuração das integrações
+
+Connectors
+
+8. Apple Connector
+- Liga ao iCloud via CalDAV.
+- Sincroniza Apple Calendar <-> local.
+- Se muda no Apple:
+  - atualiza local
+  - propaga para Google Calendar e Notion
+
+9. Google Connector
+- Liga ao Google Calendar por OAuth.
+- Sincroniza Google Calendar <-> local.
+- Se muda no Google:
+  - atualiza local
+  - propaga para Apple Calendar e Notion
+
+10. Notion Connector
+- Liga ao Notion por OAuth.
+- Cria e atualiza a base do Notion.
+- Sincroniza Notion <-> local.
+- Se muda no Notion:
+  - atualiza local
+  - propaga para Apple Calendar e Google Calendar
+
+Regra de sincronização
+- A base local continua a ser o centro.
+- Cada connector sincroniza com a base local.
+- Se um connector traz uma alteração externa:
+  - atualiza local
+  - depois envia logo para os outros connectors
+- Se o mesmo evento mudar em dois lados:
+  - ganha a alteração mais recente que chegar ao local
+
+Fluxo principal
+
+1. O utilizador envia DM no Discord.
+2. O Gateway recebe.
+3. O Orchestrator interpreta.
+4. Os serviços de IA ajudam a estruturar.
+5. O Calendar Service grava na base local.
+6. O Calendar Service notifica Apple Calendar, Google Calendar e Notion se estiverem ligados.
+7. O Gateway responde no Discord.
+
+Fluxo de listagem
+
+1. O utilizador pergunta o que tem marcado.
+2. O Orchestrator interpreta o período.
+3. O Calendar Service lê da base local.
+4. A resposta volta ao Discord.
+
+Nota
+- Apple Calendar, Google Calendar e Notion não são o cérebro.
+- O cérebro é:
+  - Discord Gateway
+  - Orchestrator
+  - Calendar Service
+  - Postgres

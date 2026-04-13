@@ -1,0 +1,3327 @@
+{
+  "suite": "create_event_regressions",
+  "cases": [
+    {
+      "id": "fresh_event_requires_title_and_end_time",
+      "turns": [
+        {
+          "content": "Queria marcar para dia 10do mes que vem as 20:00",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "replyIncludes": [
+              "nome do evento"
+            ],
+            "missingFieldsIncludes": [
+              "title",
+              "endTime"
+            ],
+            "extractedDataSubset": {
+              "date": "{{nextMonthDay:10}}",
+              "startTime": "20:00"
+            },
+            "extractedDataAbsent": [
+              "title"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "explicit_title_should_not_reask_confirmation",
+      "turns": [
+        {
+          "content": "Queria marcar para dia 10do mes que vem as 20:00",
+          "expect": {
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "title",
+              "endTime"
+            ]
+          }
+        },
+        {
+          "content": "Reuniao e vai ser ate as 22",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "replyIncludes": [
+              "nota sobre a reuniao"
+            ],
+            "missingFieldsIncludes": [
+              "description"
+            ],
+            "missingFieldsExcludes": [
+              "titleConfirmation"
+            ],
+            "extractedDataSubset": {
+              "title": "Reuniao",
+              "endTime": "22:00"
+            }
+          }
+        },
+        {
+          "content": "nao",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "extractedDataSubset": {
+              "title": "Reuniao",
+              "date": "{{nextMonthDay:10}}",
+              "startTime": "20:00",
+              "endTime": "22:00"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "single_start_time_requires_end_time",
+      "turns": [
+        {
+          "content": "E ajuda me vou ter uma consulta na sexta as 10",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "replyIncludes": [
+              "ate que horas"
+            ],
+            "missingFieldsIncludes": [
+              "endTime"
+            ],
+            "extractedDataSubset": {
+              "title": "Consulta",
+              "date": "{{weekday:friday}}",
+              "startTime": "10:00"
+            },
+            "extractedDataAbsent": [
+              "endTime"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "single_end_time_requires_start_time",
+      "turns": [
+        {
+          "content": "Vou ter uma consulta na sexta que termina as 14",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "replyIncludes": [
+              "a que horas"
+            ],
+            "missingFieldsIncludes": [
+              "startTime"
+            ],
+            "extractedDataSubset": {
+              "title": "Consulta",
+              "date": "{{weekday:friday}}",
+              "endTime": "14:00"
+            },
+            "extractedDataAbsent": [
+              "startTime"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "description_answer_is_accepted_as_free_text",
+      "turns": [
+        {
+          "content": "E ajuda me vou ter uma consulta na sexta as 10",
+          "expect": {
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "endTime"
+            ]
+          }
+        },
+        {
+          "content": "ate as 11",
+          "expect": {
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "description"
+            ],
+            "replyIncludes": [
+              "nota sobre a consulta"
+            ],
+            "extractedDataSubset": {
+              "endTime": "11:00"
+            }
+          }
+        },
+        {
+          "content": "Levar o Cao",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "extractedDataSubset": {
+              "title": "Consulta",
+              "date": "{{weekday:friday}}",
+              "startTime": "10:00",
+              "endTime": "11:00",
+              "description": "Levar o Cao"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "only_day_without_type_requires_title_and_times",
+      "tags": [
+        "missing-fields",
+        "single-turn",
+        "generic"
+      ],
+      "turns": [
+        {
+          "content": "Quero marcar amanha",
+          "expect": {
+            "command": "create_event",
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "title",
+              "startTime",
+              "endTime"
+            ],
+            "replyIncludes": [
+              "nome do evento"
+            ],
+            "extractedDataSubset": {
+              "date": "{{today+1d}}"
+            },
+            "extractedDataAbsent": [
+              "title",
+              "startTime",
+              "endTime"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "explicit_day_without_type_requires_title_and_times",
+      "tags": [
+        "missing-fields",
+        "single-turn",
+        "generic"
+      ],
+      "turns": [
+        {
+          "content": "Quero marcar no dia 10 do proximo mes",
+          "expect": {
+            "command": "create_event",
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "title",
+              "startTime",
+              "endTime"
+            ],
+            "replyIncludes": [
+              "nome do evento"
+            ],
+            "extractedDataSubset": {
+              "date": "{{nextMonthDay:10}}"
+            },
+            "extractedDataAbsent": [
+              "title",
+              "startTime",
+              "endTime"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "title_only_requires_date_and_times",
+      "tags": [
+        "missing-fields",
+        "single-turn",
+        "jantar"
+      ],
+      "turns": [
+        {
+          "content": "Quero marcar jantar",
+          "expect": {
+            "command": "create_event",
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "date",
+              "startTime",
+              "endTime"
+            ],
+            "replyIncludes": [
+              "que dia"
+            ],
+            "extractedDataSubset": {
+              "title": "Jantar"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "title_and_date_requires_times",
+      "tags": [
+        "missing-fields",
+        "single-turn",
+        "jantar"
+      ],
+      "turns": [
+        {
+          "content": "Quero marcar jantar amanha",
+          "expect": {
+            "command": "create_event",
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "startTime",
+              "endTime"
+            ],
+            "replyIncludes": [
+              "a que horas"
+            ],
+            "extractedDataSubset": {
+              "title": "Jantar",
+              "date": "{{today+1d}}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "title_and_start_only_requires_end",
+      "tags": [
+        "single-turn",
+        "time",
+        "jantar"
+      ],
+      "turns": [
+        {
+          "content": "Quero marcar jantar amanha as 20:00",
+          "expect": {
+            "command": "create_event",
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "endTime"
+            ],
+            "replyIncludes": [
+              "ate que horas"
+            ],
+            "extractedDataSubset": {
+              "title": "Jantar",
+              "date": "{{today+1d}}",
+              "startTime": "20:00"
+            },
+            "extractedDataAbsent": [
+              "endTime"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "title_and_end_only_requires_start",
+      "tags": [
+        "single-turn",
+        "time",
+        "jantar"
+      ],
+      "turns": [
+        {
+          "content": "Quero marcar jantar amanha que termina as 22",
+          "expect": {
+            "command": "create_event",
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "startTime"
+            ],
+            "replyIncludes": [
+              "a que horas"
+            ],
+            "extractedDataSubset": {
+              "title": "Jantar",
+              "date": "{{today+1d}}",
+              "endTime": "22:00"
+            },
+            "extractedDataAbsent": [
+              "startTime"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "consultation_tomorrow_requires_times",
+      "tags": [
+        "consulta",
+        "single-turn",
+        "relative-date"
+      ],
+      "turns": [
+        {
+          "content": "Quero marcar uma consulta amanha",
+          "expect": {
+            "command": "create_event",
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "startTime",
+              "endTime"
+            ],
+            "replyIncludes": [
+              "a que horas"
+            ],
+            "extractedDataSubset": {
+              "title": "Consulta",
+              "date": "{{today+1d}}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "consultation_tomorrow_start_only_requires_end",
+      "tags": [
+        "consulta",
+        "single-turn",
+        "relative-date"
+      ],
+      "turns": [
+        {
+          "content": "Quero marcar uma consulta amanha as 09:00",
+          "expect": {
+            "command": "create_event",
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "endTime"
+            ],
+            "replyIncludes": [
+              "ate que horas"
+            ],
+            "extractedDataSubset": {
+              "title": "Consulta",
+              "date": "{{today+1d}}",
+              "startTime": "09:00"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "consultation_today_start_only_requires_end",
+      "tags": [
+        "consulta",
+        "single-turn",
+        "relative-date"
+      ],
+      "turns": [
+        {
+          "content": "Quero marcar uma consulta hoje as 09:00",
+          "expect": {
+            "command": "create_event",
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "endTime"
+            ],
+            "replyIncludes": [
+              "ate que horas"
+            ],
+            "extractedDataSubset": {
+              "title": "Consulta",
+              "date": "{{today}}",
+              "startTime": "09:00"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "consultation_day_after_tomorrow_start_only_requires_end",
+      "tags": [
+        "consulta",
+        "single-turn",
+        "relative-date"
+      ],
+      "turns": [
+        {
+          "content": "Quero marcar uma consulta depois de amanha as 09:00",
+          "expect": {
+            "command": "create_event",
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "endTime"
+            ],
+            "replyIncludes": [
+              "ate que horas"
+            ],
+            "extractedDataSubset": {
+              "title": "Consulta",
+              "date": "{{today+2d}}",
+              "startTime": "09:00"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "consultation_friday_requires_times",
+      "tags": [
+        "consulta",
+        "single-turn",
+        "weekday"
+      ],
+      "turns": [
+        {
+          "content": "Quero marcar consulta na sexta",
+          "expect": {
+            "command": "create_event",
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "startTime",
+              "endTime"
+            ],
+            "replyIncludes": [
+              "a que horas"
+            ],
+            "extractedDataSubset": {
+              "title": "Consulta",
+              "date": "{{weekday:friday}}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "consultation_friday_start_only_requires_end",
+      "tags": [
+        "consulta",
+        "single-turn",
+        "weekday"
+      ],
+      "turns": [
+        {
+          "content": "Quero marcar consulta na sexta as 10",
+          "expect": {
+            "command": "create_event",
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "endTime"
+            ],
+            "replyIncludes": [
+              "ate que horas"
+            ],
+            "extractedDataSubset": {
+              "title": "Consulta",
+              "date": "{{weekday:friday}}",
+              "startTime": "10:00"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "consultation_saturday_start_only_requires_end",
+      "tags": [
+        "consulta",
+        "single-turn",
+        "weekday"
+      ],
+      "turns": [
+        {
+          "content": "Quero marcar consulta no sabado as 10",
+          "expect": {
+            "command": "create_event",
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "endTime"
+            ],
+            "replyIncludes": [
+              "ate que horas"
+            ],
+            "extractedDataSubset": {
+              "title": "Consulta",
+              "date": "{{weekday:saturday}}",
+              "startTime": "10:00"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "consultation_next_week_requires_times",
+      "tags": [
+        "consulta",
+        "single-turn",
+        "relative-week"
+      ],
+      "turns": [
+        {
+          "content": "Tenho consulta para a semana",
+          "expect": {
+            "command": "create_event",
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "startTime",
+              "endTime"
+            ],
+            "replyIncludes": [
+              "a que horas"
+            ],
+            "extractedDataSubset": {
+              "title": "Consulta",
+              "date": "{{nextWeekStart}}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "consultation_next_month_day_start_only_requires_end",
+      "tags": [
+        "consulta",
+        "single-turn",
+        "relative-month"
+      ],
+      "turns": [
+        {
+          "content": "Tenho consulta no dia 10 do proximo mes as 09:00",
+          "expect": {
+            "command": "create_event",
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "endTime"
+            ],
+            "replyIncludes": [
+              "ate que horas"
+            ],
+            "extractedDataSubset": {
+              "title": "Consulta",
+              "date": "{{nextMonthDay:10}}",
+              "startTime": "09:00"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "consultation_explicit_date_requires_times",
+      "tags": [
+        "consulta",
+        "single-turn",
+        "explicit-date"
+      ],
+      "turns": [
+        {
+          "content": "Tenho consulta no dia 5 de abril",
+          "expect": {
+            "command": "create_event",
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "startTime",
+              "endTime"
+            ],
+            "replyIncludes": [
+              "a que horas"
+            ],
+            "extractedDataSubset": {
+              "title": "Consulta",
+              "date": "{{monthDay:04-05}}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "consultation_explicit_date_start_only_requires_end",
+      "tags": [
+        "consulta",
+        "single-turn",
+        "explicit-date"
+      ],
+      "turns": [
+        {
+          "content": "Tenho consulta no dia 5 de abril as 09:00",
+          "expect": {
+            "command": "create_event",
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "endTime"
+            ],
+            "replyIncludes": [
+              "ate que horas"
+            ],
+            "extractedDataSubset": {
+              "title": "Consulta",
+              "date": "{{monthDay:04-05}}",
+              "startTime": "09:00"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "dentist_thursday_requires_times",
+      "tags": [
+        "dentista",
+        "single-turn",
+        "weekday"
+      ],
+      "turns": [
+        {
+          "content": "Marca dentista na quinta",
+          "expect": {
+            "command": "create_event",
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "startTime",
+              "endTime"
+            ],
+            "replyIncludes": [
+              "a que horas"
+            ],
+            "extractedDataSubset": {
+              "title": "Dentista",
+              "date": "{{weekday:thursday}}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "dentist_thursday_start_only_requires_end",
+      "tags": [
+        "dentista",
+        "single-turn",
+        "weekday"
+      ],
+      "turns": [
+        {
+          "content": "Marca dentista na quinta as 11",
+          "expect": {
+            "command": "create_event",
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "endTime"
+            ],
+            "replyIncludes": [
+              "ate que horas"
+            ],
+            "extractedDataSubset": {
+              "title": "Dentista",
+              "date": "{{weekday:thursday}}",
+              "startTime": "11:00"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "reuniao_tomorrow_requires_times",
+      "tags": [
+        "reuniao",
+        "single-turn",
+        "relative-date"
+      ],
+      "turns": [
+        {
+          "content": "Quero marcar uma reuniao amanha",
+          "expect": {
+            "command": "create_event",
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "startTime",
+              "endTime"
+            ],
+            "replyIncludes": [
+              "a que horas"
+            ],
+            "extractedDataSubset": {
+              "title": "Reuniao",
+              "date": "{{today+1d}}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "reuniao_tomorrow_start_only_requires_end",
+      "tags": [
+        "reuniao",
+        "single-turn",
+        "relative-date"
+      ],
+      "turns": [
+        {
+          "content": "Quero marcar uma reuniao amanha as 15:00",
+          "expect": {
+            "command": "create_event",
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "endTime"
+            ],
+            "replyIncludes": [
+              "ate que horas"
+            ],
+            "extractedDataSubset": {
+              "title": "Reuniao",
+              "date": "{{today+1d}}",
+              "startTime": "15:00"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "trabalho_explicit_date_requires_times",
+      "tags": [
+        "trabalho",
+        "single-turn",
+        "explicit-date"
+      ],
+      "turns": [
+        {
+          "content": "Vou trabalhar no dia 5 de abril",
+          "expect": {
+            "command": "create_event",
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "startTime",
+              "endTime"
+            ],
+            "replyIncludes": [
+              "a que horas"
+            ],
+            "extractedDataSubset": {
+              "title": "Trabalho",
+              "date": "{{monthDay:04-05}}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "trabalho_explicit_date_start_only_requires_end",
+      "tags": [
+        "trabalho",
+        "single-turn",
+        "explicit-date"
+      ],
+      "turns": [
+        {
+          "content": "Vou trabalhar no dia 5 de abril as 09:00",
+          "expect": {
+            "command": "create_event",
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "endTime"
+            ],
+            "replyIncludes": [
+              "ate que horas"
+            ],
+            "extractedDataSubset": {
+              "title": "Trabalho",
+              "date": "{{monthDay:04-05}}",
+              "startTime": "09:00"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "treino_tomorrow_requires_times",
+      "tags": [
+        "treino",
+        "single-turn",
+        "relative-date"
+      ],
+      "turns": [
+        {
+          "content": "Quero marcar treino amanha",
+          "expect": {
+            "command": "create_event",
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "startTime",
+              "endTime"
+            ],
+            "replyIncludes": [
+              "a que horas"
+            ],
+            "extractedDataSubset": {
+              "title": "Treino",
+              "date": "{{today+1d}}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "treino_tomorrow_start_only_requires_end",
+      "tags": [
+        "treino",
+        "single-turn",
+        "relative-date"
+      ],
+      "turns": [
+        {
+          "content": "Quero marcar treino amanha as 18:00",
+          "expect": {
+            "command": "create_event",
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "endTime"
+            ],
+            "replyIncludes": [
+              "ate que horas"
+            ],
+            "extractedDataSubset": {
+              "title": "Treino",
+              "date": "{{today+1d}}",
+              "startTime": "18:00"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "viagem_next_week_requires_times",
+      "tags": [
+        "viagem",
+        "single-turn",
+        "relative-week"
+      ],
+      "turns": [
+        {
+          "content": "Tenho viagem para a semana",
+          "expect": {
+            "command": "create_event",
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "startTime",
+              "endTime"
+            ],
+            "replyIncludes": [
+              "a que horas"
+            ],
+            "extractedDataSubset": {
+              "title": "Viagem",
+              "date": "{{nextWeekStart}}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "viagem_next_week_start_only_requires_end",
+      "tags": [
+        "viagem",
+        "single-turn",
+        "relative-week"
+      ],
+      "turns": [
+        {
+          "content": "Tenho viagem para a semana as 07:00",
+          "expect": {
+            "command": "create_event",
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "endTime"
+            ],
+            "replyIncludes": [
+              "ate que horas"
+            ],
+            "extractedDataSubset": {
+              "title": "Viagem",
+              "date": "{{nextWeekStart}}",
+              "startTime": "07:00"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "jantar_today_requires_times",
+      "tags": [
+        "jantar",
+        "single-turn",
+        "relative-date"
+      ],
+      "turns": [
+        {
+          "content": "Quero marcar jantar hoje",
+          "expect": {
+            "command": "create_event",
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "startTime",
+              "endTime"
+            ],
+            "replyIncludes": [
+              "a que horas"
+            ],
+            "extractedDataSubset": {
+              "title": "Jantar",
+              "date": "{{today}}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "jantar_today_start_only_requires_end",
+      "tags": [
+        "jantar",
+        "single-turn",
+        "relative-date"
+      ],
+      "turns": [
+        {
+          "content": "Quero marcar jantar hoje as 20:00",
+          "expect": {
+            "command": "create_event",
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "endTime"
+            ],
+            "replyIncludes": [
+              "ate que horas"
+            ],
+            "extractedDataSubset": {
+              "title": "Jantar",
+              "date": "{{today}}",
+              "startTime": "20:00"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "almoco_tomorrow_requires_times",
+      "tags": [
+        "almoco",
+        "single-turn",
+        "relative-date"
+      ],
+      "turns": [
+        {
+          "content": "Quero marcar almoco amanha",
+          "expect": {
+            "command": "create_event",
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "startTime",
+              "endTime"
+            ],
+            "replyIncludes": [
+              "a que horas"
+            ],
+            "extractedDataSubset": {
+              "title": "Almoco",
+              "date": "{{today+1d}}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "almoco_tomorrow_start_only_requires_end",
+      "tags": [
+        "almoco",
+        "single-turn",
+        "relative-date"
+      ],
+      "turns": [
+        {
+          "content": "Quero marcar almoco amanha as 13:00",
+          "expect": {
+            "command": "create_event",
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "endTime"
+            ],
+            "replyIncludes": [
+              "ate que horas"
+            ],
+            "extractedDataSubset": {
+              "title": "Almoco",
+              "date": "{{today+1d}}",
+              "startTime": "13:00"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "cafe_tomorrow_requires_times",
+      "tags": [
+        "cafe",
+        "single-turn",
+        "relative-date"
+      ],
+      "turns": [
+        {
+          "content": "Quero marcar cafe amanha",
+          "expect": {
+            "command": "create_event",
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "startTime",
+              "endTime"
+            ],
+            "replyIncludes": [
+              "a que horas"
+            ],
+            "extractedDataSubset": {
+              "title": "Cafe",
+              "date": "{{today+1d}}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "cafe_tomorrow_start_only_requires_end",
+      "tags": [
+        "cafe",
+        "single-turn",
+        "relative-date"
+      ],
+      "turns": [
+        {
+          "content": "Quero marcar cafe amanha as 10:30",
+          "expect": {
+            "command": "create_event",
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "endTime"
+            ],
+            "replyIncludes": [
+              "ate que horas"
+            ],
+            "extractedDataSubset": {
+              "title": "Cafe",
+              "date": "{{today+1d}}",
+              "startTime": "10:30"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "aniversario_saturday_requires_times",
+      "tags": [
+        "aniversario",
+        "single-turn",
+        "weekday"
+      ],
+      "turns": [
+        {
+          "content": "Quero marcar aniversario no sabado",
+          "expect": {
+            "command": "create_event",
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "startTime",
+              "endTime"
+            ],
+            "replyIncludes": [
+              "a que horas"
+            ],
+            "extractedDataSubset": {
+              "title": "Aniversario",
+              "date": "{{weekday:saturday}}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "aniversario_saturday_start_only_requires_end",
+      "tags": [
+        "aniversario",
+        "single-turn",
+        "weekday"
+      ],
+      "turns": [
+        {
+          "content": "Quero marcar aniversario no sabado as 18:00",
+          "expect": {
+            "command": "create_event",
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "endTime"
+            ],
+            "replyIncludes": [
+              "ate que horas"
+            ],
+            "extractedDataSubset": {
+              "title": "Aniversario",
+              "date": "{{weekday:saturday}}",
+              "startTime": "18:00"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "consulta_medica_tomorrow_start_only_requires_end",
+      "tags": [
+        "consulta-medica",
+        "single-turn",
+        "relative-date"
+      ],
+      "turns": [
+        {
+          "content": "Quero marcar consulta medica amanha as 09:00",
+          "expect": {
+            "command": "create_event",
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "endTime"
+            ],
+            "replyIncludes": [
+              "ate que horas"
+            ],
+            "extractedDataSubset": {
+              "title": "Consulta medica",
+              "date": "{{today+1d}}",
+              "startTime": "09:00"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "medico_tomorrow_start_only_requires_end",
+      "tags": [
+        "medico",
+        "single-turn",
+        "relative-date"
+      ],
+      "turns": [
+        {
+          "content": "Tenho medico amanha as 09:00",
+          "expect": {
+            "command": "create_event",
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "endTime"
+            ],
+            "replyIncludes": [
+              "ate que horas"
+            ],
+            "extractedDataSubset": {
+              "title": "Consulta medica",
+              "date": "{{today+1d}}",
+              "startTime": "09:00"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "pequeno_almoco_tomorrow_start_only_requires_end",
+      "tags": [
+        "pequeno-almoco",
+        "single-turn",
+        "relative-date"
+      ],
+      "turns": [
+        {
+          "content": "Quero marcar pequeno almoco amanha as 08:30",
+          "expect": {
+            "command": "create_event",
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "endTime"
+            ],
+            "replyIncludes": [
+              "ate que horas"
+            ],
+            "extractedDataSubset": {
+              "title": "Pequeno-almoco",
+              "date": "{{today+1d}}",
+              "startTime": "08:30"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "reuniao_next_week_requires_times",
+      "tags": [
+        "reuniao",
+        "single-turn",
+        "relative-week"
+      ],
+      "turns": [
+        {
+          "content": "Tenho reuniao para a semana",
+          "expect": {
+            "command": "create_event",
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "startTime",
+              "endTime"
+            ],
+            "replyIncludes": [
+              "a que horas"
+            ],
+            "extractedDataSubset": {
+              "title": "Reuniao",
+              "date": "{{nextWeekStart}}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "short_end_time_reply_is_accepted",
+      "tags": [
+        "multi-turn",
+        "consulta",
+        "follow-up"
+      ],
+      "turns": [
+        {
+          "content": "Quero marcar uma consulta amanha as 09:00",
+          "expect": {
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "endTime"
+            ]
+          }
+        },
+        {
+          "content": "11",
+          "expect": {
+            "command": "create_event",
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "description"
+            ],
+            "replyIncludes": [
+              "nota sobre a consulta"
+            ],
+            "extractedDataSubset": {
+              "endTime": "11:00"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "short_start_time_reply_is_accepted",
+      "tags": [
+        "multi-turn",
+        "consulta",
+        "follow-up"
+      ],
+      "turns": [
+        {
+          "content": "Vou ter uma consulta na sexta que termina as 14",
+          "expect": {
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "startTime"
+            ]
+          }
+        },
+        {
+          "content": "10",
+          "expect": {
+            "command": "create_event",
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "description"
+            ],
+            "replyIncludes": [
+              "nota sobre a consulta"
+            ],
+            "extractedDataSubset": {
+              "startTime": "10:00",
+              "endTime": "14:00"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "description_skip_with_saltar_completes_event",
+      "tags": [
+        "multi-turn",
+        "jantar",
+        "description"
+      ],
+      "turns": [
+        {
+          "content": "Quero marcar jantar amanha as 20:00",
+          "expect": {
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "endTime"
+            ]
+          }
+        },
+        {
+          "content": "22",
+          "expect": {
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "description"
+            ],
+            "replyIncludes": [
+              "nota sobre o jantar"
+            ],
+            "extractedDataSubset": {
+              "endTime": "22:00"
+            }
+          }
+        },
+        {
+          "content": "saltar",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "extractedDataSubset": {
+              "title": "Jantar",
+              "date": "{{today+1d}}",
+              "startTime": "20:00",
+              "endTime": "22:00"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "description_full_sentence_is_accepted",
+      "tags": [
+        "multi-turn",
+        "jantar",
+        "description"
+      ],
+      "turns": [
+        {
+          "content": "Quero marcar jantar amanha as 20:00",
+          "expect": {
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "endTime"
+            ]
+          }
+        },
+        {
+          "content": "22",
+          "expect": {
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "description"
+            ],
+            "replyIncludes": [
+              "nota sobre o jantar"
+            ]
+          }
+        },
+        {
+          "content": "Levar a prenda de anos",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "extractedDataSubset": {
+              "title": "Jantar",
+              "date": "{{today+1d}}",
+              "startTime": "20:00",
+              "endTime": "22:00",
+              "description": "Levar a prenda de anos"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "generic_day_then_title_and_end_are_accepted",
+      "tags": [
+        "multi-turn",
+        "generic",
+        "context"
+      ],
+      "turns": [
+        {
+          "content": "Queria marcar para dia 10do mes que vem as 20:00",
+          "expect": {
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "title",
+              "endTime"
+            ]
+          }
+        },
+        {
+          "content": "Jantar e vai ser ate as 22",
+          "expect": {
+            "command": "create_event",
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "description"
+            ],
+            "replyIncludes": [
+              "nota sobre o jantar"
+            ],
+            "extractedDataSubset": {
+              "title": "Jantar",
+              "date": "{{nextMonthDay:10}}",
+              "startTime": "20:00",
+              "endTime": "22:00"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "generic_day_then_title_end_and_saltar_complete",
+      "tags": [
+        "multi-turn",
+        "generic",
+        "context"
+      ],
+      "turns": [
+        {
+          "content": "Queria marcar para dia 10do mes que vem as 20:00",
+          "expect": {
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "title",
+              "endTime"
+            ]
+          }
+        },
+        {
+          "content": "Reuniao e vai ser ate as 22",
+          "expect": {
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "description"
+            ],
+            "replyIncludes": [
+              "nota sobre a reuniao"
+            ],
+            "extractedDataSubset": {
+              "title": "Reuniao",
+              "endTime": "22:00"
+            }
+          }
+        },
+        {
+          "content": "nao",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "extractedDataSubset": {
+              "title": "Reuniao",
+              "date": "{{nextMonthDay:10}}",
+              "startTime": "20:00",
+              "endTime": "22:00"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "trabalho_then_short_end_time_then_description",
+      "tags": [
+        "multi-turn",
+        "trabalho",
+        "follow-up"
+      ],
+      "turns": [
+        {
+          "content": "Vou trabalhar amanha as 09:00",
+          "expect": {
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "endTime"
+            ]
+          }
+        },
+        {
+          "content": "18",
+          "expect": {
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "description"
+            ],
+            "extractedDataSubset": {
+              "endTime": "18:00"
+            }
+          }
+        },
+        {
+          "content": "Turno da tarde na loja",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "extractedDataSubset": {
+              "title": "Trabalho",
+              "date": "{{today+1d}}",
+              "startTime": "09:00",
+              "endTime": "18:00",
+              "description": "Turno da tarde na loja"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "reuniao_then_short_end_time_then_saltar",
+      "tags": [
+        "multi-turn",
+        "reuniao",
+        "follow-up"
+      ],
+      "turns": [
+        {
+          "content": "Tenho reuniao amanha as 15:00",
+          "expect": {
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "endTime"
+            ]
+          }
+        },
+        {
+          "content": "16",
+          "expect": {
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "description"
+            ],
+            "replyIncludes": [
+              "nota sobre a reuniao"
+            ],
+            "extractedDataSubset": {
+              "endTime": "16:00"
+            }
+          }
+        },
+        {
+          "content": "saltar",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "extractedDataSubset": {
+              "title": "Reuniao",
+              "date": "{{today+1d}}",
+              "startTime": "15:00",
+              "endTime": "16:00"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "cafe_then_short_end_time_then_description",
+      "tags": [
+        "multi-turn",
+        "cafe",
+        "follow-up"
+      ],
+      "turns": [
+        {
+          "content": "Quero marcar cafe amanha as 10:30",
+          "expect": {
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "endTime"
+            ]
+          }
+        },
+        {
+          "content": "11",
+          "expect": {
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "description"
+            ],
+            "replyIncludes": [
+              "nota sobre o cafe"
+            ],
+            "extractedDataSubset": {
+              "endTime": "11:00"
+            }
+          }
+        },
+        {
+          "content": "Perguntar ao primo sobre o carro",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "extractedDataSubset": {
+              "title": "Cafe",
+              "date": "{{today+1d}}",
+              "startTime": "10:30",
+              "endTime": "11:00",
+              "description": "Perguntar ao primo sobre o carro"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "viagem_then_short_end_time_then_saltar",
+      "tags": [
+        "multi-turn",
+        "viagem",
+        "follow-up"
+      ],
+      "turns": [
+        {
+          "content": "Tenho viagem amanha as 07:00",
+          "expect": {
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "endTime"
+            ]
+          }
+        },
+        {
+          "content": "9",
+          "expect": {
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "description"
+            ],
+            "extractedDataSubset": {
+              "endTime": "09:00"
+            }
+          }
+        },
+        {
+          "content": "nao",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "extractedDataSubset": {
+              "title": "Viagem",
+              "date": "{{today+1d}}",
+              "startTime": "07:00",
+              "endTime": "09:00"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "jantar_full_message_with_description",
+      "tags": [
+        "single-turn",
+        "complete",
+        "jantar",
+        "description"
+      ],
+      "turns": [
+        {
+          "content": "Marca jantar amanha das 20:00 as 22:00 levar a prenda de anos",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "extractedDataSubset": {
+              "title": "Jantar",
+              "date": "{{today+1d}}",
+              "startTime": "20:00",
+              "endTime": "22:00",
+              "description": "Levar a prenda de anos"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "consulta_full_message_with_description",
+      "tags": [
+        "single-turn",
+        "complete",
+        "consulta",
+        "description"
+      ],
+      "turns": [
+        {
+          "content": "Marca consulta amanha das 09:00 as 10:00 levar exames",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "extractedDataSubset": {
+              "title": "Consulta",
+              "date": "{{today+1d}}",
+              "startTime": "09:00",
+              "endTime": "10:00",
+              "description": "Levar exames"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "reuniao_full_message_with_description",
+      "tags": [
+        "single-turn",
+        "complete",
+        "reuniao",
+        "description"
+      ],
+      "turns": [
+        {
+          "content": "Marca reuniao na sexta das 15:00 as 16:00 falar do projeto final",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "extractedDataSubset": {
+              "title": "Reuniao",
+              "date": "{{weekday:friday}}",
+              "startTime": "15:00",
+              "endTime": "16:00",
+              "description": "Falar do projeto final"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "treino_full_message_with_description",
+      "tags": [
+        "single-turn",
+        "complete",
+        "treino",
+        "description"
+      ],
+      "turns": [
+        {
+          "content": "Marca treino amanha das 18:00 as 19:30 pernas e cardio",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "extractedDataSubset": {
+              "title": "Treino",
+              "date": "{{today+1d}}",
+              "startTime": "18:00",
+              "endTime": "19:30",
+              "description": "Pernas e cardio"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "viagem_full_message_with_description",
+      "tags": [
+        "single-turn",
+        "complete",
+        "viagem",
+        "description"
+      ],
+      "turns": [
+        {
+          "content": "Marca viagem para a semana das 07:00 as 09:00 apanhar o comboio cedo",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "extractedDataSubset": {
+              "title": "Viagem",
+              "date": "{{nextWeekStart}}",
+              "startTime": "07:00",
+              "endTime": "09:00",
+              "description": "Apanhar o comboio cedo"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "almoco_full_message_with_description",
+      "tags": [
+        "single-turn",
+        "complete",
+        "almoco",
+        "description"
+      ],
+      "turns": [
+        {
+          "content": "Marca almoco no dia 10 do proximo mes das 12:30 as 14:00 almocar com a familia",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "extractedDataSubset": {
+              "title": "Almoco",
+              "date": "{{nextMonthDay:10}}",
+              "startTime": "12:30",
+              "endTime": "14:00",
+              "description": "Almocar com a familia"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "cafe_full_message_with_description",
+      "tags": [
+        "single-turn",
+        "complete",
+        "cafe",
+        "description"
+      ],
+      "turns": [
+        {
+          "content": "Marca cafe hoje das 10:30 as 11:00 perguntar ao primo sobre o carro",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "extractedDataSubset": {
+              "title": "Cafe",
+              "date": "{{today}}",
+              "startTime": "10:30",
+              "endTime": "11:00",
+              "description": "Perguntar ao primo sobre o carro"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "dentista_full_message_with_description",
+      "tags": [
+        "single-turn",
+        "complete",
+        "dentista",
+        "description"
+      ],
+      "turns": [
+        {
+          "content": "Marca dentista na quinta das 11:00 as 12:00 limpeza anual",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "extractedDataSubset": {
+              "title": "Dentista",
+              "date": "{{weekday:thursday}}",
+              "startTime": "11:00",
+              "endTime": "12:00",
+              "description": "Limpeza anual"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "consulta_medica_full_message_with_description",
+      "tags": [
+        "single-turn",
+        "complete",
+        "consulta-medica",
+        "description"
+      ],
+      "turns": [
+        {
+          "content": "Marca consulta medica no dia 5 de abril das 09:00 as 10:00 mostrar analises",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "extractedDataSubset": {
+              "title": "Consulta medica",
+              "date": "{{monthDay:04-05}}",
+              "startTime": "09:00",
+              "endTime": "10:00",
+              "description": "Mostrar analises"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "aniversario_full_message_with_description",
+      "tags": [
+        "single-turn",
+        "complete",
+        "aniversario",
+        "description"
+      ],
+      "turns": [
+        {
+          "content": "Marca aniversario no sabado das 18:00 as 23:00 levar bolo e velas",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "extractedDataSubset": {
+              "title": "Aniversario",
+              "date": "{{weekday:saturday}}",
+              "startTime": "18:00",
+              "endTime": "23:00",
+              "description": "Levar bolo e velas"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "category_meeting_should_normalize_conference_to_reuniao",
+      "tags": [
+        "single-turn",
+        "category",
+        "meeting"
+      ],
+      "turns": [
+        {
+          "content": "Agenda-me uma reuniao para esta sexta das 10:00 as 11:30 sobre projeto multiagente sobre fogo",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "extractedDataSubset": {
+              "title": "Reuniao",
+              "date": "{{weekday:friday}}",
+              "startTime": "10:00",
+              "endTime": "11:30",
+              "category": "Reuniao"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "category_pequeno_almoco_should_map_to_lanche",
+      "tags": [
+        "single-turn",
+        "category",
+        "meal"
+      ],
+      "turns": [
+        {
+          "content": "Marca pequeno almoco amanha das 08:00 as 08:45 com o Joao",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "extractedDataSubset": {
+              "title": "Pequeno-almoco",
+              "startTime": "08:00",
+              "endTime": "08:45",
+              "category": "Lanche"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "category_cafe_should_map_to_lanche",
+      "tags": [
+        "single-turn",
+        "category",
+        "meal"
+      ],
+      "turns": [
+        {
+          "content": "Marca cafe hoje das 10:30 as 11:00 falar com o primo",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "extractedDataSubset": {
+              "title": "Cafe",
+              "startTime": "10:30",
+              "endTime": "11:00",
+              "category": "Lanche"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "category_work_should_map_to_trabalho",
+      "tags": [
+        "single-turn",
+        "category",
+        "work"
+      ],
+      "turns": [
+        {
+          "content": "Vou trabalhar sexta das 14:00 as 18:00 no projeto final",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "extractedDataSubset": {
+              "title": "Trabalho",
+              "date": "{{weekday:friday}}",
+              "startTime": "14:00",
+              "endTime": "18:00",
+              "category": "Trabalho"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "category_trip_should_map_to_viagem",
+      "tags": [
+        "single-turn",
+        "category",
+        "trip"
+      ],
+      "turns": [
+        {
+          "content": "Marca viagem para a semana das 06:00 as 09:00 voo para Madrid",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "extractedDataSubset": {
+              "title": "Viagem",
+              "startTime": "06:00",
+              "endTime": "09:00",
+              "category": "Viagem"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "recurring_weekly_event_asks_for_end_time_and_until",
+      "turns": [
+        {
+          "content": "Cria reunioes todas as sextas as 11:00",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "replyIncludes": [
+              "ate que horas",
+              "ate quando"
+            ],
+            "missingFieldsIncludes": [
+              "recurrenceEndTime",
+              "recurrenceUntil"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "recurring_weekly_event_accepts_end_time_until_and_skip_description",
+      "turns": [
+        {
+          "content": "Cria reunioes todas as sextas as 11:00",
+          "expect": {
+            "missingFieldsIncludes": [
+              "recurrenceEndTime",
+              "recurrenceUntil"
+            ]
+          }
+        },
+        {
+          "content": "ate as 12 e ate ao fim do ano",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "recurrenceDescription"
+            ],
+            "replyIncludes": [
+              "descricao comum"
+            ]
+          }
+        },
+        {
+          "content": "saltar",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "replyIncludes": [
+              "ocorrencias",
+              "sextas"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "recurring_weekly_event_with_inline_this_month_only_asks_end_time",
+      "turns": [
+        {
+          "content": "Marca me reuniao para todas sextas deste mes as 11",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "replyIncludes": [
+              "ate que horas"
+            ],
+            "missingFieldsIncludes": [
+              "recurrenceEndTime"
+            ],
+            "missingFieldsExcludes": [
+              "recurrenceUntil"
+            ]
+          }
+        },
+        {
+          "content": "ate as 12:30",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "recurrenceDescription"
+            ]
+          }
+        },
+        {
+          "content": "Exposed Copper",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "replyIncludes": [
+              "ocorrencias",
+              "deste mes"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "multi_create_two_events_can_collect_end_times_by_order",
+      "turns": [
+        {
+          "content": "Cria a reuniao para as 11 desta sexta e o almoco para quinta as 12",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "batchEndTimes"
+            ],
+            "replyIncludes": [
+              "a que horas termina",
+              "reuniao",
+              "almoco"
+            ]
+          }
+        },
+        {
+          "content": "Um acaba as 12 e outro as 13",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "batchDescription"
+            ],
+            "replyIncludes": [
+              "descricao para"
+            ]
+          }
+        },
+        {
+          "content": "saltar",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "replyIncludes": [
+              "2 eventos"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "multi_create_relative_weekday_and_day_of_month",
+      "turns": [
+        {
+          "content": "Cria a Almoco para as 11 desta sexta e o consulta para o dia 29 as 12",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "batchEndTimes"
+            ],
+            "replyIncludes": [
+              "a que horas termina",
+              "almoco",
+              "consulta"
+            ]
+          }
+        },
+        {
+          "content": "ate as 12 e ate as 13",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "batchDescription"
+            ],
+            "replyIncludes": [
+              "descricao para"
+            ]
+          }
+        },
+        {
+          "content": "saltar",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "replyIncludes": [
+              "2 eventos"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "multi_create_descriptions_can_be_assigned_by_reference",
+      "turns": [
+        {
+          "content": "Cria a Almoco para as 11 desta sexta e o consulta para o dia 29 as 12",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "batchEndTimes"
+            ]
+          }
+        },
+        {
+          "content": "O almoco as 13 e a consulta as 14",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "batchDescription"
+            ],
+            "replyIncludes": [
+              "descricao para"
+            ]
+          }
+        },
+        {
+          "content": "Sim no almoco meter para Tenho que levar o carro e na consulta nao quero nada",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "batchItemsSubset": [
+              {
+                "description": "Tenho que levar o carro"
+              }
+            ],
+            "batchItemsAbsent": [
+              {
+                "index": 1,
+                "key": "description"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "multi_create_descriptions_follow_order_when_unreferenced",
+      "turns": [
+        {
+          "content": "Cria a Almoco para as 11 desta sexta e o consulta para o dia 29 as 12",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "batchEndTimes"
+            ]
+          }
+        },
+        {
+          "content": "13 e 14",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "batchDescription"
+            ]
+          }
+        },
+        {
+          "content": "Tenho que levar o carro e nada",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "batchItemsSubset": [
+              {
+                "description": "Tenho que levar o carro"
+              }
+            ],
+            "batchItemsAbsent": [
+              {
+                "index": 1,
+                "key": "description"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "multi_create_supports_next_year_written_month",
+      "turns": [
+        {
+          "content": "Cria a reuniao para 5 de janeiro do proximo ano as 11 e o almoco para dia 29 as 12",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "batchEndTimes"
+            ],
+            "replyIncludes": [
+              "a que horas termina",
+              "reuniao",
+              "almoco"
+            ]
+          }
+        },
+        {
+          "content": "12 e 13",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "batchDescription"
+            ]
+          }
+        },
+        {
+          "content": "saltar",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "replyIncludes": [
+              "2 eventos"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "multi_create_only_asks_missing_end_time_for_second_event",
+      "turns": [
+        {
+          "content": "Cria a reuniao desta sexta das 11 as 12 e a consulta para dia 29 as 15",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "batchEndTimes"
+            ],
+            "replyIncludes": [
+              "consulta"
+            ],
+            "replyExcludes": [
+              "reuniao e a consulta"
+            ]
+          }
+        },
+        {
+          "content": "ate as 16",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "batchDescription"
+            ]
+          }
+        },
+        {
+          "content": "saltar",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "multi_create_two_day_only_dates_same_month",
+      "turns": [
+        {
+          "content": "Cria a reuniao para dia 29 as 10 e o almoco para dia 30 as 12",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "batchEndTimes"
+            ],
+            "replyIncludes": [
+              "reuniao",
+              "almoco"
+            ]
+          }
+        },
+        {
+          "content": "11 e 13",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "batchDescription"
+            ]
+          }
+        },
+        {
+          "content": "saltar",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "all_day_range_next_month_requires_only_optional_description",
+      "turns": [
+        {
+          "content": "Marca ferias de 10 a 25 do proximo mes",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "description"
+            ],
+            "missingFieldsExcludes": [
+              "startTime",
+              "endTime"
+            ],
+            "replyIncludes": [
+              "nota sobre as ferias"
+            ],
+            "extractedDataSubset": {
+              "title": "Ferias",
+              "date": "{{nextMonthDay:10}}",
+              "endDate": "{{nextMonthDay:25}}",
+              "allDay": true
+            },
+            "extractedDataAbsent": [
+              "startTime",
+              "endTime"
+            ]
+          }
+        },
+        {
+          "content": "nao",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "replyIncludes": [
+              "Ferias",
+              "dia todo"
+            ],
+            "extractedDataSubset": {
+              "title": "Ferias",
+              "date": "{{nextMonthDay:10}}",
+              "endDate": "{{nextMonthDay:25}}",
+              "allDay": true
+            },
+            "extractedDataAbsent": [
+              "startTime",
+              "endTime"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "all_day_range_without_month_asks_only_optional_description",
+      "turns": [
+        {
+          "content": "Vou estar de ferias de 10 a 25",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "description"
+            ],
+            "missingFieldsExcludes": [
+              "startTime",
+              "endTime"
+            ],
+            "replyIncludes": [
+              "nota sobre as ferias"
+            ],
+            "extractedDataSubset": {
+              "title": "Ferias",
+              "date": "{{currentMonthDay:10}}",
+              "endDate": "{{currentMonthDay:25}}",
+              "allDay": true
+            },
+            "extractedDataAbsent": [
+              "startTime",
+              "endTime"
+            ]
+          }
+        },
+        {
+          "content": "saltar",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "replyIncludes": [
+              "Ferias",
+              "dia todo"
+            ],
+            "extractedDataSubset": {
+              "title": "Ferias",
+              "date": "{{currentMonthDay:10}}",
+              "endDate": "{{currentMonthDay:25}}",
+              "allDay": true
+            },
+            "extractedDataAbsent": [
+              "startTime",
+              "endTime"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "all_day_range_current_month_requires_only_optional_description",
+      "turns": [
+        {
+          "content": "Marca ferias de 10 a 25 deste mes",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "description"
+            ],
+            "missingFieldsExcludes": [
+              "startTime",
+              "endTime"
+            ],
+            "replyIncludes": [
+              "nota sobre as ferias"
+            ],
+            "extractedDataSubset": {
+              "title": "Ferias",
+              "date": "{{currentMonthDay:10}}",
+              "endDate": "{{currentMonthDay:25}}",
+              "allDay": true
+            },
+            "extractedDataAbsent": [
+              "startTime",
+              "endTime"
+            ]
+          }
+        },
+        {
+          "content": "nao",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "replyIncludes": [
+              "Ferias",
+              "dia todo"
+            ],
+            "extractedDataSubset": {
+              "title": "Ferias",
+              "date": "{{currentMonthDay:10}}",
+              "endDate": "{{currentMonthDay:25}}",
+              "allDay": true
+            },
+            "extractedDataAbsent": [
+              "startTime",
+              "endTime"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "all_day_written_month_range_requires_only_optional_description",
+      "turns": [
+        {
+          "content": "Vou estar de ferias do dia 4 a 8 de maio",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "description"
+            ],
+            "missingFieldsExcludes": [
+              "startTime",
+              "endTime"
+            ],
+            "replyIncludes": [
+              "nota sobre as ferias"
+            ],
+            "extractedDataSubset": {
+              "title": "Ferias",
+              "date": "{{monthDay:05-04}}",
+              "endDate": "{{monthDay:05-08}}",
+              "allDay": true
+            },
+            "extractedDataAbsent": [
+              "startTime",
+              "endTime"
+            ]
+          }
+        },
+        {
+          "content": "saltar",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "replyIncludes": [
+              "Ferias",
+              "dia todo"
+            ],
+            "extractedDataSubset": {
+              "title": "Ferias",
+              "date": "{{monthDay:05-04}}",
+              "endDate": "{{monthDay:05-08}}",
+              "allDay": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "all_day_first_week_of_named_month_requires_only_optional_description",
+      "turns": [
+        {
+          "content": "Regista me ferias para a primeira semana de julho",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "description"
+            ],
+            "missingFieldsExcludes": [
+              "startTime",
+              "endTime"
+            ],
+            "replyIncludes": [
+              "nota sobre as ferias"
+            ],
+            "extractedDataSubset": {
+              "title": "Ferias",
+              "date": "{{monthDay:07-01}}",
+              "endDate": "{{monthDay:07-07}}",
+              "allDay": true
+            },
+            "extractedDataAbsent": [
+              "startTime",
+              "endTime"
+            ]
+          }
+        },
+        {
+          "content": "saltar",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "replyIncludes": [
+              "Ferias",
+              "dia todo"
+            ],
+            "extractedDataSubset": {
+              "title": "Ferias",
+              "date": "{{monthDay:07-01}}",
+              "endDate": "{{monthDay:07-07}}",
+              "allDay": true
+            },
+            "extractedDataAbsent": [
+              "startTime",
+              "endTime"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "all_day_first_week_named_month_with_intro_phrase",
+      "turns": [
+        {
+          "content": "E agora Regista me ferias para a primeira semana de julho",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "description"
+            ],
+            "missingFieldsExcludes": [
+              "startTime",
+              "endTime"
+            ],
+            "replyIncludes": [
+              "nota sobre as ferias"
+            ],
+            "extractedDataSubset": {
+              "title": "Ferias",
+              "date": "{{monthDay:07-01}}",
+              "endDate": "{{monthDay:07-07}}",
+              "allDay": true
+            },
+            "extractedDataAbsent": [
+              "startTime",
+              "endTime"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "single_day_create_can_switch_to_all_day_with_follow_up",
+      "turns": [
+        {
+          "content": "Marca ferias para dia 4 de maio",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "startTime",
+              "endTime"
+            ],
+            "replyIncludes": [
+              "a que horas comeca"
+            ],
+            "extractedDataSubset": {
+              "title": "Ferias",
+              "date": "{{monthDay:05-04}}"
+            }
+          }
+        },
+        {
+          "content": "Dia todo",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "description"
+            ],
+            "missingFieldsExcludes": [
+              "startTime",
+              "endTime"
+            ],
+            "replyIncludes": [
+              "nota sobre as ferias"
+            ],
+            "extractedDataSubset": {
+              "title": "Ferias",
+              "date": "{{monthDay:05-04}}",
+              "allDay": true
+            },
+            "extractedDataAbsent": [
+              "startTime",
+              "endTime"
+            ]
+          }
+        },
+        {
+          "content": "nao",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "replyIncludes": [
+              "Ferias",
+              "dia todo"
+            ],
+            "extractedDataSubset": {
+              "title": "Ferias",
+              "date": "{{monthDay:05-04}}",
+              "allDay": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "direct_sem_descricao_skips_optional_description",
+      "turns": [
+        {
+          "content": "Marca reuniao para sexta das 14 as 15 sem descricao",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "extractedDataSubset": {
+              "title": "Reuniao",
+              "date": "{{weekday:friday}}",
+              "startTime": "14:00",
+              "endTime": "15:00"
+            },
+            "extractedDataAbsent": [
+              "description"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "direct_descricao_vazia_skips_optional_description",
+      "turns": [
+        {
+          "content": "Marca jantar amanha das 20:00 as 22:00 e deixa a descricao vazia",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "extractedDataSubset": {
+              "title": "Jantar",
+              "date": "{{weekday:friday}}",
+              "startTime": "20:00",
+              "endTime": "22:00"
+            },
+            "extractedDataAbsent": [
+              "description"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "direct_sem_nada_na_descricao_skips_optional_description",
+      "turns": [
+        {
+          "content": "Marca consulta na sexta das 10 as 11 sem nada na descricao",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "extractedDataSubset": {
+              "title": "Consulta",
+              "date": "{{weekday:friday}}",
+              "startTime": "10:00",
+              "endTime": "11:00"
+            },
+            "extractedDataAbsent": [
+              "description"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "all_day_range_direct_sem_descricao_skips_optional_description",
+      "turns": [
+        {
+          "content": "Vou estar de ferias do dia 4 a 8 de maio sem descricao",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "extractedDataSubset": {
+              "title": "Ferias",
+              "date": "{{monthDay:05-04}}",
+              "endDate": "{{monthDay:05-08}}",
+              "allDay": true
+            },
+            "extractedDataAbsent": [
+              "description",
+              "startTime",
+              "endTime"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "recurring_direct_sem_descricao_skips_optional_description",
+      "turns": [
+        {
+          "content": "Cria reunioes todas as sextas das 11 as 12 ate ao fim do mes sem descricao",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "replyIncludes": [
+              "ocorrencias"
+            ],
+            "extractedDataSubset": {
+              "title": "Reuniao",
+              "date": "{{weekday:friday}}",
+              "startTime": "11:00",
+              "endTime": "12:00"
+            },
+            "extractedDataAbsent": [
+              "description"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "description_follow_up_deixa_descricao_vazia",
+      "turns": [
+        {
+          "content": "Marca ferias para dia 4 de maio",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "startTime",
+              "endTime"
+            ]
+          }
+        },
+        {
+          "content": "Dia todo",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "description"
+            ],
+            "extractedDataSubset": {
+              "title": "Ferias",
+              "date": "{{monthDay:05-04}}",
+              "allDay": true
+            }
+          }
+        },
+        {
+          "content": "deixa a descricao vazia",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "extractedDataSubset": {
+              "title": "Ferias",
+              "date": "{{monthDay:05-04}}",
+              "allDay": true
+            },
+            "extractedDataAbsent": [
+              "description",
+              "startTime",
+              "endTime"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "description_follow_up_sem_nada",
+      "turns": [
+        {
+          "content": "Marca ferias para dia 4 de maio",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "startTime",
+              "endTime"
+            ]
+          }
+        },
+        {
+          "content": "Dia todo",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "description"
+            ],
+            "extractedDataSubset": {
+              "title": "Ferias",
+              "date": "{{monthDay:05-04}}",
+              "allDay": true
+            }
+          }
+        },
+        {
+          "content": "sem nada",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "extractedDataSubset": {
+              "title": "Ferias",
+              "date": "{{monthDay:05-04}}",
+              "allDay": true
+            },
+            "extractedDataAbsent": [
+              "description",
+              "startTime",
+              "endTime"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "description_follow_up_nao_quero_meter_nada_na_descricao",
+      "turns": [
+        {
+          "content": "Marca ferias para dia 4 de maio",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "startTime",
+              "endTime"
+            ]
+          }
+        },
+        {
+          "content": "Dia todo",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "description"
+            ],
+            "extractedDataSubset": {
+              "title": "Ferias",
+              "date": "{{monthDay:05-04}}",
+              "allDay": true
+            }
+          }
+        },
+        {
+          "content": "nao quero meter nada na descricao",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "extractedDataSubset": {
+              "title": "Ferias",
+              "date": "{{monthDay:05-04}}",
+              "allDay": true
+            },
+            "extractedDataAbsent": [
+              "description",
+              "startTime",
+              "endTime"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "all_day_follow_up_can_also_skip_description_inline",
+      "turns": [
+        {
+          "content": "Queria marcar ferias para o dia 30 deste mes",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "startTime",
+              "endTime"
+            ]
+          }
+        },
+        {
+          "content": "Dia todo e podes deixar a descricao vazia",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "extractedDataSubset": {
+              "title": "Ferias",
+              "date": "{{dayOfMonth:30}}",
+              "allDay": true
+            },
+            "extractedDataAbsent": [
+              "description",
+              "startTime",
+              "endTime"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "recurring_description_follow_up_deixa_vazia",
+      "turns": [
+        {
+          "content": "Cria reunioes todas as sextas as 11",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "recurrenceEndTime",
+              "recurrenceUntil"
+            ]
+          }
+        },
+        {
+          "content": "ate as 12 e ate ao fim do mes",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "recurrenceDescription"
+            ],
+            "replyIncludes": [
+              "descricao comum"
+            ]
+          }
+        },
+        {
+          "content": "podes deixar a descricao vazia",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "replyIncludes": [
+              "ocorrencias"
+            ],
+            "extractedDataSubset": {
+              "title": "Reuniao",
+              "date": "{{weekday:friday}}",
+              "startTime": "11:00",
+              "endTime": "12:00"
+            },
+            "extractedDataAbsent": [
+              "description"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "consulta_typo_with_hour_only_range_and_sem_descricao_should_complete",
+      "turns": [
+        {
+          "content": "Marca-me um consulkta para o dia 15 de julho as 15 ate as 18 sem descricao",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "extractedDataSubset": {
+              "title": "Consulta",
+              "date": "{{monthDay:07-15}}",
+              "startTime": "15:00",
+              "endTime": "18:00",
+              "category": "Consulta"
+            },
+            "extractedDataAbsent": [
+              "description"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,474 @@
+{
+  "suite": "update_event_regressions",
+  "cases": [
+    {
+      "id": "update_single_date_change_asks_keep_time",
+      "turns": [
+        {
+          "content": "Altera o almoco de amanha para dia 30",
+          "options": {
+            "mockCalendarSearchResults": [
+              {
+                "pageId": "upd-1",
+                "title": "Almoco",
+                "date": "{{today+1d}}",
+                "startTime": "10:00",
+                "endTime": "11:00",
+                "description": "Levar o carro"
+              }
+            ]
+          },
+          "expect": {
+            "command": "update_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "updateKeepTime"
+            ],
+            "replyIncludes": [
+              "mesma hora",
+              "almoco"
+            ]
+          }
+        },
+        {
+          "content": "mesma hora",
+          "expect": {
+            "command": "update_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "updateItemsSubset": [
+              {
+                "pageId": "upd-1",
+                "event": {
+                  "title": "Almoco",
+                  "date": "{{dayOfMonth:30}}",
+                  "startTime": "10:00",
+                  "endTime": "11:00"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "update_ambiguous_target_can_be_refined_by_time",
+      "turns": [
+        {
+          "content": "Altera o almoco de amanha para dia 30",
+          "options": {
+            "mockCalendarSearchResults": [
+              {
+                "pageId": "upd-amb-1",
+                "title": "Almoco",
+                "date": "{{today+1d}}",
+                "startTime": "10:00",
+                "endTime": "11:00",
+                "description": "Equipa A"
+              },
+              {
+                "pageId": "upd-amb-2",
+                "title": "Almoco",
+                "date": "{{today+1d}}",
+                "startTime": "12:00",
+                "endTime": "13:00",
+                "description": "Equipa B"
+              }
+            ]
+          },
+          "expect": {
+            "command": "update_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "updateSelection"
+            ],
+            "replyIncludes": [
+              "Qual queres alterar",
+              "10:00",
+              "12:00"
+            ]
+          }
+        },
+        {
+          "content": "amanha o das 10",
+          "expect": {
+            "command": "update_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "updateKeepTime"
+            ],
+            "replyIncludes": [
+              "mesma hora"
+            ]
+          }
+        },
+        {
+          "content": "mesma hora",
+          "expect": {
+            "command": "update_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "updateItemsSubset": [
+              {
+                "pageId": "upd-amb-1",
+                "event": {
+                  "title": "Almoco",
+                  "date": "{{dayOfMonth:30}}",
+                  "startTime": "10:00",
+                  "endTime": "11:00"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "update_multiple_events_shared_date_and_same_hours",
+      "turns": [
+        {
+          "content": "Altera o almoco e a reuniao de amanha para dia 30 mesmas horas",
+          "options": {
+            "mockCalendarSearchResults": [
+              {
+                "pageId": "upd-multi-1",
+                "title": "Almoco",
+                "date": "{{today+1d}}",
+                "startTime": "12:00",
+                "endTime": "13:00"
+              },
+              {
+                "pageId": "upd-multi-2",
+                "title": "Reuniao",
+                "date": "{{today+1d}}",
+                "startTime": "15:00",
+                "endTime": "16:00",
+                "description": "Projeto Fire"
+              }
+            ]
+          },
+          "expect": {
+            "command": "update_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "replyIncludes": [
+              "2 eventos"
+            ],
+            "updateItemsSubset": [
+              {
+                "pageId": "upd-multi-1",
+                "event": {
+                  "title": "Almoco",
+                  "date": "{{dayOfMonth:30}}",
+                  "startTime": "12:00",
+                  "endTime": "13:00"
+                }
+              },
+              {
+                "pageId": "upd-multi-2",
+                "event": {
+                  "title": "Reuniao",
+                  "date": "{{dayOfMonth:30}}",
+                  "startTime": "15:00",
+                  "endTime": "16:00"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "update_multiple_events_different_targets_can_confirm_same_hours",
+      "turns": [
+        {
+          "content": "Altera o almoco de amanha para dia 30 e a reuniao de sexta para dia 10",
+          "options": {
+            "mockCalendarSearchResults": [
+              {
+                "pageId": "upd-diff-1",
+                "title": "Almoco",
+                "date": "{{today+1d}}",
+                "startTime": "11:00",
+                "endTime": "12:30"
+              },
+              {
+                "pageId": "upd-diff-2",
+                "title": "Reuniao",
+                "date": "{{weekday:friday}}",
+                "startTime": "15:00",
+                "endTime": "16:30"
+              }
+            ]
+          },
+          "expect": {
+            "command": "update_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "updateKeepTime"
+            ],
+            "replyIncludes": [
+              "mesmas horas",
+              "almoco",
+              "reuniao"
+            ]
+          }
+        },
+        {
+          "content": "mesmas horas",
+          "expect": {
+            "command": "update_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "replyIncludes": [
+              "2 eventos"
+            ],
+            "updateItemsSubset": [
+              {
+                "pageId": "upd-diff-1",
+                "event": {
+                  "title": "Almoco",
+                  "date": "{{dayOfMonth:30}}",
+                  "startTime": "11:00",
+                  "endTime": "12:30"
+                }
+              },
+              {
+                "pageId": "upd-diff-2",
+                "event": {
+                  "title": "Reuniao",
+                  "date": "{{dayOfMonth:10}}",
+                  "startTime": "15:00",
+                  "endTime": "16:30"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "update_ambiguous_target_can_select_both_and_keep_time",
+      "turns": [
+        {
+          "content": "Altera o almoco de amanha para dia 30",
+          "options": {
+            "mockCalendarSearchResults": [
+              {
+                "pageId": "upd-both-1",
+                "title": "Almoco",
+                "date": "{{today+1d}}",
+                "startTime": "10:00",
+                "endTime": "11:00"
+              },
+              {
+                "pageId": "upd-both-2",
+                "title": "Almoco",
+                "date": "{{today+1d}}",
+                "startTime": "15:00",
+                "endTime": "16:00"
+              }
+            ]
+          },
+          "expect": {
+            "missingFieldsIncludes": [
+              "updateSelection"
+            ]
+          }
+        },
+        {
+          "content": "ambos",
+          "expect": {
+            "command": "update_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "updateKeepTime"
+            ],
+            "replyIncludes": [
+              "mesma hora"
+            ]
+          }
+        },
+        {
+          "content": "sim",
+          "expect": {
+            "command": "update_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "replyIncludes": [
+              "2 eventos"
+            ],
+            "updateItemsSubset": [
+              {
+                "pageId": "upd-both-1",
+                "event": {
+                  "date": "{{dayOfMonth:30}}",
+                  "startTime": "10:00",
+                  "endTime": "11:00"
+                }
+              },
+              {
+                "pageId": "upd-both-2",
+                "event": {
+                  "date": "{{dayOfMonth:30}}",
+                  "startTime": "15:00",
+                  "endTime": "16:00"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "update_typoed_request_still_routes_to_update",
+      "turns": [
+        {
+          "content": "E agltera me a hora da consukta para o dia 30",
+          "options": {
+            "mockCalendarSearchResults": [
+              {
+                "pageId": "upd-typo-1",
+                "title": "Consulta",
+                "date": "{{today+1d}}",
+                "startTime": "10:00",
+                "endTime": "11:00"
+              }
+            ]
+          },
+          "expect": {
+            "command": "update_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "updateTime"
+            ],
+            "replyIncludes": [
+              "novas horas",
+              "consulta"
+            ]
+          }
+        },
+        {
+          "content": "mete para as 14:00 ate as 15:00",
+          "expect": {
+            "command": "update_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "updateItemsSubset": [
+              {
+                "pageId": "upd-typo-1",
+                "event": {
+                  "title": "Consulta",
+                  "date": "{{dayOfMonth:30}}",
+                  "startTime": "14:00",
+                  "endTime": "15:00"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "update_only_start_time_preserves_duration",
+      "turns": [
+        {
+          "content": "Altera a hora da consulta de amanha para as 12",
+          "options": {
+            "mockCalendarSearchResults": [
+              {
+                "pageId": "upd-time-1",
+                "title": "Consulta",
+                "date": "{{today+1d}}",
+                "startTime": "10:00",
+                "endTime": "11:00"
+              }
+            ]
+          },
+          "expect": {
+            "command": "update_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "replyIncludes": [
+              "12:00 as 13:00"
+            ],
+            "updateItemsSubset": [
+              {
+                "pageId": "upd-time-1",
+                "event": {
+                  "title": "Consulta",
+                  "date": "{{today+1d}}",
+                  "startTime": "12:00",
+                  "endTime": "13:00"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "update_keep_time_follow_up_accepts_explicit_new_hours",
+      "turns": [
+        {
+          "content": "Altera o almoco de amanha para dia 30",
+          "options": {
+            "mockCalendarSearchResults": [
+              {
+                "pageId": "upd-follow-1",
+                "title": "Almoco",
+                "date": "{{today+1d}}",
+                "startTime": "10:00",
+                "endTime": "11:00"
+              }
+            ]
+          },
+          "expect": {
+            "command": "update_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "updateKeepTime"
+            ],
+            "replyIncludes": [
+              "mesma hora"
+            ]
+          }
+        },
+        {
+          "content": "mete para as 14:00 ate as 15:00",
+          "expect": {
+            "command": "update_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "updateItemsSubset": [
+              {
+                "pageId": "upd-follow-1",
+                "event": {
+                  "title": "Almoco",
+                  "date": "{{dayOfMonth:30}}",
+                  "startTime": "14:00",
+                  "endTime": "15:00"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+node_modules
+discord/node_modules
+discord/dist
+orchestrator/node_modules
+orchestrator/dist
+llm-service/node_modules
+llm-service/dist
+.env
+.git

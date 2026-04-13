@@ -1,0 +1,314 @@
+﻿name: pulse
+
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: discord/Dockerfile
+    environment:
+      NODE_ENV: production
+      DISCORD_TOKEN: ${DISCORD_TOKEN}
+      ORCHESTRATOR_URL: ${ORCHESTRATOR_URL:-http://orchestrator:8000}
+    depends_on:
+      orchestrator:
+        condition: service_started
+    restart: unless-stopped
+
+  dashboard-service:
+    build:
+      context: .
+      dockerfile: dashboard/Dockerfile
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      DASHBOARD_PORT: ${DASHBOARD_PORT:-8088}
+      DASHBOARD_BASE_URL: ${DASHBOARD_BASE_URL:-http://localhost:8088}
+      APPLE_CONNECTOR_URL: ${APPLE_CONNECTOR_URL:-http://apple-connector:8006}
+      GOOGLE_CONNECTOR_URL: ${GOOGLE_CONNECTOR_URL:-http://google-connector:8007}
+      NOTION_CONNECTOR_URL: ${NOTION_CONNECTOR_URL:-http://notion-connector:8008}
+      CONFIG_POSTGRES_URL: ${CONFIG_POSTGRES_URL:-postgres://agentpulse_config:agentpulse_config_password@config-postgres:5432/agentpulse_config}
+      DASHBOARD_INTERNAL_API_TOKEN: ${DASHBOARD_INTERNAL_API_TOKEN:-pulse_dashboard_internal_token_change_me}
+      APP_TIMEZONE: ${APP_TIMEZONE:-Europe/Lisbon}
+    ports:
+      - "${DASHBOARD_PORT:-8088}:8088"
+    depends_on:
+      config-postgres:
+        condition: service_healthy
+      apple-connector:
+        condition: service_started
+      google-connector:
+        condition: service_started
+      notion-connector:
+        condition: service_started
+    restart: unless-stopped
+
+  orchestrator:
+    build:
+      context: .
+      dockerfile: orchestrator/Dockerfile
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      ORCHESTRATOR_PORT: ${ORCHESTRATOR_PORT:-8000}
+      POSTGRES_URL: ${POSTGRES_URL:-postgres://agentpulse:agentpulse_dev_password@postgres:5432/agentpulse}
+      LLM_SERVICE_URL: ${LLM_SERVICE_URL:-http://llm-service:8001}
+      NORMALIZER_SERVICE_URL: ${NORMALIZER_SERVICE_URL:-http://normalizer-service:8002}
+      CALENDAR_SERVICE_URL: ${CALENDAR_SERVICE_URL:-http://calendar-service:8003}
+      EXTRACTOR_SERVICE_URL: ${EXTRACTOR_SERVICE_URL:-http://extractor-service:8004}
+      VALIDATOR_SERVICE_URL: ${VALIDATOR_SERVICE_URL:-http://validator-service:8005}
+    ports:
+      - "${ORCHESTRATOR_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      llm-service:
+        condition: service_started
+      extractor-service:
+        condition: service_started
+      validator-service:
+        condition: service_started
+      normalizer-service:
+        condition: service_started
+      calendar-service:
+        condition: service_started
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-agentpulse}
+      POSTGRES_USER: ${POSTGRES_USER:-agentpulse}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-agentpulse_dev_password}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-agentpulse} -d ${POSTGRES_DB:-agentpulse}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  config-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${CONFIG_POSTGRES_DB:-agentpulse_config}
+      POSTGRES_USER: ${CONFIG_POSTGRES_USER:-agentpulse_config}
+      POSTGRES_PASSWORD: ${CONFIG_POSTGRES_PASSWORD:-agentpulse_config_password}
+    volumes:
+      - config-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${CONFIG_POSTGRES_USER:-agentpulse_config} -d ${CONFIG_POSTGRES_DB:-agentpulse_config}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  llm-service:
+    build:
+      context: .
+      dockerfile: llm-service/Dockerfile
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      LLM_SERVICE_PORT: ${LLM_SERVICE_PORT:-8001}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2}
+      OLLAMA_AUTO_PULL: ${OLLAMA_AUTO_PULL:-true}
+    ports:
+      - "${LLM_SERVICE_PORT:-8001}:8001"
+    depends_on:
+      ollama:
+        condition: service_started
+    restart: unless-stopped
+
+  normalizer-service:
+    build:
+      context: .
+      dockerfile: normalizer-service/Dockerfile
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      NORMALIZER_SERVICE_PORT: ${NORMALIZER_SERVICE_PORT:-8002}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      NORMALIZER_MODEL: ${NORMALIZER_MODEL:-qwen2.5:3b}
+      NORMALIZER_AUTO_PULL: ${NORMALIZER_AUTO_PULL:-true}
+    ports:
+      - "${NORMALIZER_SERVICE_PORT:-8002}:8002"
+    depends_on:
+      ollama:
+        condition: service_started
+    restart: unless-stopped
+
+  extractor-service:
+    build:
+      context: .
+      dockerfile: extractor-service/Dockerfile
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      EXTRACTOR_SERVICE_PORT: ${EXTRACTOR_SERVICE_PORT:-8004}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      EXTRACTOR_MODEL: ${EXTRACTOR_MODEL:-qwen2.5:3b}
+      EXTRACTOR_AUTO_PULL: ${EXTRACTOR_AUTO_PULL:-true}
+    ports:
+      - "${EXTRACTOR_SERVICE_PORT:-8004}:8004"
+    depends_on:
+      ollama:
+        condition: service_started
+    restart: unless-stopped
+
+  validator-service:
+    build:
+      context: .
+      dockerfile: validator-service/Dockerfile
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      VALIDATOR_SERVICE_PORT: ${VALIDATOR_SERVICE_PORT:-8005}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      VALIDATOR_MODEL: ${VALIDATOR_MODEL:-qwen2.5:3b}
+      VALIDATOR_AUTO_PULL: ${VALIDATOR_AUTO_PULL:-true}
+    ports:
+      - "${VALIDATOR_SERVICE_PORT:-8005}:8005"
+    depends_on:
+      ollama:
+        condition: service_started
+    restart: unless-stopped
+
+  calendar-service:
+    build:
+      context: .
+      dockerfile: calendar-service/Dockerfile
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      CALENDAR_SERVICE_PORT: ${CALENDAR_SERVICE_PORT:-8003}
+      POSTGRES_URL: ${POSTGRES_URL:-postgres://agentpulse:agentpulse_dev_password@postgres:5432/agentpulse}
+      APPLE_CONNECTOR_URL: ${APPLE_CONNECTOR_URL:-http://apple-connector:8006}
+      GOOGLE_CONNECTOR_URL: ${GOOGLE_CONNECTOR_URL:-http://google-connector:8007}
+      NOTION_CONNECTOR_URL: ${NOTION_CONNECTOR_URL:-http://notion-connector:8008}
+      DASHBOARD_INTERNAL_API_TOKEN: ${DASHBOARD_INTERNAL_API_TOKEN:-pulse_dashboard_internal_token_change_me}
+      APP_TIMEZONE: ${APP_TIMEZONE:-Europe/Lisbon}
+    ports:
+      - "${CALENDAR_SERVICE_PORT:-8003}:8003"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      apple-connector:
+        condition: service_started
+      google-connector:
+        condition: service_started
+      notion-connector:
+        condition: service_started
+    restart: unless-stopped
+
+  apple-connector:
+    build:
+      context: .
+      dockerfile: apple-connector/Dockerfile
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      APPLE_CONNECTOR_PORT: ${APPLE_CONNECTOR_PORT:-8006}
+      POSTGRES_URL: ${POSTGRES_URL:-postgres://agentpulse:agentpulse_dev_password@postgres:5432/agentpulse}
+      CONFIG_POSTGRES_URL: ${CONFIG_POSTGRES_URL:-postgres://agentpulse_config:agentpulse_config_password@config-postgres:5432/agentpulse_config}
+      CONFIG_ENCRYPTION_KEY: ${CONFIG_ENCRYPTION_KEY}
+      DASHBOARD_INTERNAL_API_TOKEN: ${DASHBOARD_INTERNAL_API_TOKEN:-pulse_dashboard_internal_token_change_me}
+      APP_TIMEZONE: ${APP_TIMEZONE:-Europe/Lisbon}
+      APPLE_CALDAV_URL: ${APPLE_CALDAV_URL:-https://caldav.icloud.com}
+      APPLE_SYNC_INTERVAL_MS: ${APPLE_SYNC_INTERVAL_MS:-60000}
+      GOOGLE_CONNECTOR_URL: ${GOOGLE_CONNECTOR_URL:-http://google-connector:8007}
+      NOTION_CONNECTOR_URL: ${NOTION_CONNECTOR_URL:-http://notion-connector:8008}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      config-postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  google-connector:
+    build:
+      context: .
+      dockerfile: google-connector/Dockerfile
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      GOOGLE_CONNECTOR_PORT: ${GOOGLE_CONNECTOR_PORT:-8007}
+      POSTGRES_URL: ${POSTGRES_URL:-postgres://agentpulse:agentpulse_dev_password@postgres:5432/agentpulse}
+      CONFIG_POSTGRES_URL: ${CONFIG_POSTGRES_URL:-postgres://agentpulse_config:agentpulse_config_password@config-postgres:5432/agentpulse_config}
+      CONFIG_ENCRYPTION_KEY: ${CONFIG_ENCRYPTION_KEY}
+      DASHBOARD_INTERNAL_API_TOKEN: ${DASHBOARD_INTERNAL_API_TOKEN:-pulse_dashboard_internal_token_change_me}
+      APP_TIMEZONE: ${APP_TIMEZONE:-Europe/Lisbon}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI}
+      GOOGLE_SYNC_INTERVAL_MS: ${GOOGLE_SYNC_INTERVAL_MS:-60000}
+      APPLE_CONNECTOR_URL: ${APPLE_CONNECTOR_URL:-http://apple-connector:8006}
+      NOTION_CONNECTOR_URL: ${NOTION_CONNECTOR_URL:-http://notion-connector:8008}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      config-postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  notion-connector:
+    build:
+      context: .
+      dockerfile: notion-connector/Dockerfile
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      NOTION_CONNECTOR_PORT: ${NOTION_CONNECTOR_PORT:-8008}
+      POSTGRES_URL: ${POSTGRES_URL:-postgres://agentpulse:agentpulse_dev_password@postgres:5432/agentpulse}
+      CONFIG_POSTGRES_URL: ${CONFIG_POSTGRES_URL:-postgres://agentpulse_config:agentpulse_config_password@config-postgres:5432/agentpulse_config}
+      CONFIG_ENCRYPTION_KEY: ${CONFIG_ENCRYPTION_KEY}
+      DASHBOARD_INTERNAL_API_TOKEN: ${DASHBOARD_INTERNAL_API_TOKEN:-pulse_dashboard_internal_token_change_me}
+      APP_TIMEZONE: ${APP_TIMEZONE:-Europe/Lisbon}
+      NOTION_CLIENT_ID: ${NOTION_CLIENT_ID}
+      NOTION_CLIENT_SECRET: ${NOTION_CLIENT_SECRET}
+      NOTION_REDIRECT_URI: ${NOTION_REDIRECT_URI}
+      NOTION_API_VERSION: ${NOTION_API_VERSION:-2022-06-28}
+      NOTION_SYNC_INTERVAL_MS: ${NOTION_SYNC_INTERVAL_MS:-60000}
+      APPLE_CONNECTOR_URL: ${APPLE_CONNECTOR_URL:-http://apple-connector:8006}
+      GOOGLE_CONNECTOR_URL: ${GOOGLE_CONNECTOR_URL:-http://google-connector:8007}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      config-postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+volumes:
+  ollama-data:
+    external: true
+    name: discord_ollama-data
+  postgres-data:
+  config-postgres-data:

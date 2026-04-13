@@ -1,0 +1,927 @@
+{
+  "suite": "list_event_regressions",
+  "cases": [
+    {
+      "id": "list_today_returns_detailed_events",
+      "turns": [
+        {
+          "content": "O que tenho marcado para hoje",
+          "options": {
+            "mockCalendarSearchResults": [
+              {
+                "pageId": "list-today-1",
+                "title": "Reuniao",
+                "date": "{{today}}",
+                "startTime": "10:00",
+                "endTime": "11:30",
+                "description": "Projeto Fire"
+              },
+              {
+                "pageId": "list-today-2",
+                "title": "Almoco",
+                "date": "{{today}}",
+                "startTime": "13:00",
+                "endTime": "14:00",
+                "description": "Com a equipa"
+              }
+            ]
+          },
+          "expect": {
+            "command": "list_events",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "replyIncludes": [
+              "para hoje",
+              "1. Reuniao - 10:00 as 11:30 - Projeto Fire",
+              "2. Almoco - 13:00 as 14:00 - Com a equipa"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "list_follow_up_after_generic_question",
+      "turns": [
+        {
+          "content": "O que tenho marcado",
+          "expect": {
+            "command": "list_events",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "listPeriod"
+            ],
+            "replyIncludes": [
+              "hoje",
+              "amanha",
+              "este mes"
+            ]
+          }
+        },
+        {
+          "content": "amanha",
+          "options": {
+            "mockCalendarSearchResults": [
+              {
+                "pageId": "list-tomorrow-1",
+                "title": "Consulta",
+                "date": "{{today+1d}}",
+                "startTime": "09:00",
+                "endTime": "10:00",
+                "description": "Levar exames"
+              }
+            ]
+          },
+          "expect": {
+            "command": "list_events",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "replyIncludes": [
+              "para amanha",
+              "Consulta - 09:00 as 10:00 - Levar exames"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "list_until_end_of_week_groups_by_day",
+      "turns": [
+        {
+          "content": "O que tenho marcado ate ao final da semana",
+          "options": {
+            "mockCalendarSearchResults": [
+              {
+                "pageId": "list-week-1",
+                "title": "Reuniao",
+                "date": "{{weekday:friday}}",
+                "startTime": "10:00",
+                "endTime": "11:00",
+                "description": "Sprint"
+              },
+              {
+                "pageId": "list-week-2",
+                "title": "Jantar",
+                "date": "{{weekday:sunday}}",
+                "startTime": "20:00",
+                "endTime": "22:00",
+                "description": "Familia"
+              }
+            ]
+          },
+          "expect": {
+            "command": "list_events",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "replyIncludes": [
+              "Eventos para ate ao final da semana",
+              "sexta-feira",
+              "domingo",
+              "Reuniao - 10:00 as 11:00 - Sprint",
+              "Jantar - 20:00 as 22:00 - Familia"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "list_this_month_groups_by_week",
+      "turns": [
+        {
+          "content": "O que tenho marcado para este mes",
+          "options": {
+            "mockCalendarSearchResults": [
+              {
+                "pageId": "list-month-1",
+                "title": "Treino",
+                "date": "{{currentMonthDay:5}}",
+                "startTime": "19:00",
+                "endTime": "20:00",
+                "description": "Perna"
+              },
+              {
+                "pageId": "list-month-2",
+                "title": "Consulta",
+                "date": "{{currentMonthDay:29}}",
+                "startTime": "12:00",
+                "endTime": "13:00",
+                "description": "Dentista"
+              }
+            ]
+          },
+          "expect": {
+            "command": "list_events",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "replyIncludes": [
+              "Eventos para este mes",
+              "Semana de",
+              "Treino - 19:00 as 20:00 - Perna",
+              "Consulta - 12:00 as 13:00 - Dentista"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "list_month_summary_is_compact",
+      "turns": [
+        {
+          "content": "Faz me um resumo para este mes",
+          "options": {
+            "mockCalendarSearchResults": [
+              {
+                "pageId": "list-summary-1",
+                "title": "Reuniao",
+                "date": "{{currentMonthDay:7}}",
+                "startTime": "10:00",
+                "endTime": "11:30",
+                "description": "Projeto MultiAgente"
+              },
+              {
+                "pageId": "list-summary-2",
+                "title": "Almoco",
+                "date": "{{currentMonthDay:18}}",
+                "startTime": "13:00",
+                "endTime": "14:30",
+                "description": "Com a equipa"
+              }
+            ]
+          },
+          "expect": {
+            "command": "list_events",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "replyIncludes": [
+              "Resumo para este mes",
+              "10:00 - Reuniao",
+              "13:00 - Almoco"
+            ],
+            "replyExcludes": [
+              "11:30",
+              "14:30",
+              "Projeto MultiAgente",
+              "Com a equipa"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "list_today_no_results",
+      "turns": [
+        {
+          "content": "O que tenho marcado para hoje",
+          "options": {
+            "mockCalendarSearchResults": []
+          },
+          "expect": {
+            "command": "list_events",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "replyIncludes": [
+              "Nao tens eventos marcados para hoje"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "list_next_month_direct_request",
+      "turns": [
+        {
+          "content": "O que tenho marcado para o proximo mes",
+          "options": {
+            "mockCalendarSearchResults": [
+              {
+                "pageId": "list-next-month-1",
+                "title": "Reuniao",
+                "date": "{{nextMonthDay:3}}",
+                "startTime": "10:00",
+                "endTime": "11:30",
+                "description": "Planeamento"
+              },
+              {
+                "pageId": "list-next-month-2",
+                "title": "Consulta",
+                "date": "{{nextMonthDay:18}}",
+                "startTime": "09:00",
+                "endTime": "10:00",
+                "description": "Rotina"
+              }
+            ]
+          },
+          "expect": {
+            "command": "list_events",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "replyIncludes": [
+              "Eventos para proximo mes",
+              "Semana de",
+              "Reuniao - 10:00 as 11:30 - Planeamento",
+              "Consulta - 09:00 as 10:00 - Rotina"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "list_next_month_follow_up_after_generic_question",
+      "turns": [
+        {
+          "content": "O que tenho marcado",
+          "expect": {
+            "command": "list_events",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "listPeriod"
+            ],
+            "replyIncludes": [
+              "proximo mes"
+            ]
+          }
+        },
+        {
+          "content": "proximo mes",
+          "options": {
+            "mockCalendarSearchResults": [
+              {
+                "pageId": "list-next-month-follow-up-1",
+                "title": "Treino",
+                "date": "{{nextMonthDay:6}}",
+                "startTime": "18:00",
+                "endTime": "19:30",
+                "description": "Costas"
+              }
+            ]
+          },
+          "expect": {
+            "command": "list_events",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "replyIncludes": [
+              "Eventos para proximo mes",
+              "Treino - 18:00 as 19:30 - Costas"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "list_acknowledgement_does_not_restart_follow_up",
+      "turns": [
+        {
+          "content": "O que tenho marcado",
+          "expect": {
+            "command": "list_events",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "listPeriod"
+            ]
+          }
+        },
+        {
+          "content": "amanha",
+          "options": {
+            "mockCalendarSearchResults": [
+              {
+                "pageId": "list-ack-1",
+                "title": "Almoco",
+                "date": "{{today+1d}}",
+                "startTime": "11:00",
+                "endTime": "13:00",
+                "description": "Tenho que levar o carro"
+              },
+              {
+                "pageId": "list-ack-2",
+                "title": "Reuniao",
+                "date": "{{today+1d}}",
+                "startTime": "14:00",
+                "endTime": "15:00"
+              }
+            ]
+          },
+          "expect": {
+            "command": "list_events",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "replyIncludes": [
+              "para amanha",
+              "1. Almoco - 11:00 as 13:00 - Tenho que levar o carro",
+              "2. Reuniao - 14:00 as 15:00"
+            ]
+          }
+        },
+        {
+          "content": "Boa nice",
+          "expect": {
+            "command": "chat",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "replyIncludes": [
+              "Boa"
+            ],
+            "replyExcludes": [
+              "Que periodo queres ver"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "list_completed_result_can_continue_with_period_only_follow_up",
+      "turns": [
+        {
+          "content": "O que tenho marcado para o proximo mes",
+          "options": {
+            "mockCalendarSearchResults": []
+          },
+          "expect": {
+            "command": "list_events",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "replyIncludes": [
+              "Nao tens eventos marcados para proximo mes"
+            ]
+          }
+        },
+        {
+          "content": "E para este mes ?",
+          "options": {
+            "mockCalendarSearchResults": [
+              {
+                "pageId": "list-current-month-follow-up-1",
+                "title": "Almoco",
+                "date": "{{currentMonthDay:3}}",
+                "startTime": "11:00",
+                "endTime": "13:00",
+                "description": "Tenho que levar o carro"
+              },
+              {
+                "pageId": "list-current-month-follow-up-2",
+                "title": "Reuniao",
+                "date": "{{currentMonthDay:6}}",
+                "startTime": "14:00",
+                "endTime": "15:00"
+              }
+            ]
+          },
+          "expect": {
+            "command": "list_events",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "replyIncludes": [
+              "Eventos para este mes",
+              "Almoco - 11:00 as 13:00 - Tenho que levar o carro",
+              "Reuniao - 14:00 as 15:00"
+            ],
+            "replyExcludes": [
+              "para tu"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "list_completed_result_can_continue_with_neste_mes_follow_up",
+      "turns": [
+        {
+          "content": "O que tenho marcado para o proximo mes",
+          "options": {
+            "mockCalendarSearchResults": []
+          },
+          "expect": {
+            "command": "list_events",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "replyIncludes": [
+              "Nao tens eventos marcados para proximo mes"
+            ]
+          }
+        },
+        {
+          "content": "e neste mes ?",
+          "options": {
+            "mockCalendarSearchResults": [
+              {
+                "pageId": "list-current-month-follow-up-neste-1",
+                "title": "Almoco",
+                "date": "{{currentMonthDay:3}}",
+                "startTime": "11:00",
+                "endTime": "13:00",
+                "description": "Tenho que levar o carro"
+              },
+              {
+                "pageId": "list-current-month-follow-up-neste-2",
+                "title": "Reuniao",
+                "date": "{{currentMonthDay:6}}",
+                "startTime": "14:00",
+                "endTime": "15:00"
+              }
+            ]
+          },
+          "expect": {
+            "command": "list_events",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "replyIncludes": [
+              "Eventos para este mes",
+              "Almoco - 11:00 as 13:00 - Tenho que levar o carro",
+              "Reuniao - 14:00 as 15:00"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "list_pending_period_can_be_completed_with_mes",
+      "turns": [
+        {
+          "content": "O que tenho para este ?",
+          "expect": {
+            "command": "list_events",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "listPeriod"
+            ],
+            "replyIncludes": [
+              "Que periodo queres ver"
+            ]
+          }
+        },
+        {
+          "content": "mes",
+          "options": {
+            "mockCalendarSearchResults": [
+              {
+                "pageId": "list-pending-mes-1",
+                "title": "Almoco",
+                "date": "{{currentMonthDay:3}}",
+                "startTime": "11:00",
+                "endTime": "13:00",
+                "description": "Tenho que levar o carro"
+              }
+            ]
+          },
+          "expect": {
+            "command": "list_events",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "replyIncludes": [
+              "Eventos para este mes",
+              "Almoco - 11:00 as 13:00 - Tenho que levar o carro"
+            ],
+            "replyExcludes": [
+              "Que periodo queres ver"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "list_then_create_does_not_get_stuck_in_list_mode",
+      "turns": [
+        {
+          "content": "O que tenho marcado para este mes",
+          "options": {
+            "mockCalendarSearchResults": [
+              {
+                "pageId": "list-create-1",
+                "title": "Almoco",
+                "date": "{{today+1d}}",
+                "startTime": "11:00",
+                "endTime": "13:00",
+                "description": "Tenho que levar o carro"
+              },
+              {
+                "pageId": "list-create-2",
+                "title": "Reuniao",
+                "date": "{{today+1d}}",
+                "startTime": "14:00",
+                "endTime": "15:00"
+              }
+            ]
+          },
+          "expect": {
+            "command": "list_events",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "replyIncludes": [
+              "Eventos para este mes"
+            ]
+          }
+        },
+        {
+          "content": "Marca reuniao para sexta das 14 as 15 sem descricao",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "replyIncludes": [
+              "Perfeito. Registei Reuniao"
+            ],
+            "replyExcludes": [
+              "Tens 2 eventos marcados para sexta"
+            ],
+            "extractedDataSubset": {
+              "title": "Reuniao",
+              "rawDate": "sexta",
+              "startTime": "14:00",
+              "endTime": "15:00"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "list_next_month_then_this_month_then_create_stays_correct",
+      "turns": [
+        {
+          "content": "o que tenho marcado para o proximo mes ?",
+          "options": {
+            "mockCalendarSearchResults": []
+          },
+          "expect": {
+            "command": "list_events",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "replyIncludes": [
+              "Nao tens eventos marcados para proximo mes"
+            ]
+          }
+        },
+        {
+          "content": "e para este ?",
+          "options": {
+            "mockCalendarSearchResults": [
+              {
+                "pageId": "list-switch-1",
+                "title": "Almoco",
+                "date": "{{today+1d}}",
+                "startTime": "11:00",
+                "endTime": "13:00",
+                "description": "Tenho que levar o carro"
+              }
+            ]
+          },
+          "expect": {
+            "command": "list_events",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "replyIncludes": [
+              "Eventos para este mes",
+              "Almoco - 11:00 as 13:00 - Tenho que levar o carro"
+            ]
+          }
+        },
+        {
+          "content": "Marca reuniao para sexta das 15 as 16 sobre comida",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "replyIncludes": [
+              "Perfeito. Registei Reuniao"
+            ],
+            "replyExcludes": [
+              "Eventos para",
+              "Nao tens eventos"
+            ],
+            "extractedDataSubset": {
+              "title": "Reuniao",
+              "rawDate": "sexta",
+              "startTime": "15:00",
+              "endTime": "16:00",
+              "description": "Sobre comida"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "list_then_short_follow_up_then_greeting_breaks_context",
+      "turns": [
+        {
+          "content": "o que tenho marcado para o proximo mes ?",
+          "options": {
+            "mockCalendarSearchResults": []
+          },
+          "expect": {
+            "command": "list_events",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "replyIncludes": [
+              "Nao tens eventos marcados para proximo mes"
+            ]
+          }
+        },
+        {
+          "content": "e para este ?",
+          "options": {
+            "mockCalendarSearchResults": [
+              {
+                "pageId": "list-chat-break-1",
+                "title": "Almoco",
+                "date": "{{today+1d}}",
+                "startTime": "11:00",
+                "endTime": "13:00",
+                "description": "Tenho que levar o carro"
+              }
+            ]
+          },
+          "expect": {
+            "command": "list_events",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "replyIncludes": [
+              "Eventos para este mes"
+            ]
+          }
+        },
+        {
+          "content": "Ola",
+          "expect": {
+            "command": "chat",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "replyIncludes": [
+              "posso ajudar"
+            ],
+            "replyExcludes": [
+              "Que periodo queres ver",
+              "Eventos para"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "list_then_greeting_then_create_not_stuck",
+      "turns": [
+        {
+          "content": "O que tenho marcado para este mes",
+          "options": {
+            "mockCalendarSearchResults": [
+              {
+                "pageId": "list-greet-create-1",
+                "title": "Reuniao",
+                "date": "{{today+1d}}",
+                "startTime": "14:00",
+                "endTime": "15:00"
+              }
+            ]
+          },
+          "expect": {
+            "command": "list_events",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "replyIncludes": [
+              "Eventos para este mes"
+            ]
+          }
+        },
+        {
+          "content": "Boa nice",
+          "expect": {
+            "command": "chat",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "replyIncludes": [
+              "Boa"
+            ],
+            "replyExcludes": [
+              "Que periodo queres ver",
+              "Eventos para"
+            ]
+          }
+        },
+        {
+          "content": "Marca consulta para amanha das 9 as 10 sem descricao",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "replyIncludes": [
+              "Perfeito. Registei Consulta"
+            ],
+            "replyExcludes": [
+              "Nao tens eventos marcados",
+              "Eventos para"
+            ],
+            "extractedDataSubset": {
+              "title": "Consulta",
+              "rawDate": "amanha",
+              "startTime": "09:00",
+              "endTime": "10:00"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "list_then_short_month_follow_up_then_create_not_stuck",
+      "turns": [
+        {
+          "content": "o que tenho marcado para o proximo mes ?",
+          "options": {
+            "mockCalendarSearchResults": []
+          },
+          "expect": {
+            "command": "list_events",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "replyIncludes": [
+              "Nao tens eventos marcados para proximo mes"
+            ]
+          }
+        },
+        {
+          "content": "e para este ?",
+          "options": {
+            "mockCalendarSearchResults": [
+              {
+                "pageId": "list-create-break-1",
+                "title": "Almoco",
+                "date": "{{today+1d}}",
+                "startTime": "11:00",
+                "endTime": "13:00",
+                "description": "Tenho que levar o carro"
+              }
+            ]
+          },
+          "expect": {
+            "command": "list_events",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "replyIncludes": [
+              "Eventos para este mes"
+            ]
+          }
+        },
+        {
+          "content": "Marca jantar para sexta das 20 as 22 sem descricao",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "replyIncludes": [
+              "Perfeito. Registei Jantar"
+            ],
+            "replyExcludes": [
+              "Nao tens eventos marcados",
+              "Eventos para"
+            ],
+            "extractedDataSubset": {
+              "title": "Jantar",
+              "rawDate": "sexta",
+              "startTime": "20:00",
+              "endTime": "22:00"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "list_next_week_via_para_a_semana_direct_request",
+      "turns": [
+        {
+          "content": "Queria saber o que tenho marcado para a semana",
+          "options": {
+            "mockCalendarSearchResults": [
+              {
+                "pageId": "list-next-week-1",
+                "title": "Reuniao",
+                "date": "{{nextWeekday:monday}}",
+                "startTime": "10:00",
+                "endTime": "11:00",
+                "description": "Planeamento"
+              },
+              {
+                "pageId": "list-next-week-2",
+                "title": "Consulta",
+                "date": "{{nextWeekday:wednesday}}",
+                "startTime": "15:00",
+                "endTime": "16:00",
+                "description": "Rotina"
+              }
+            ]
+          },
+          "expect": {
+            "command": "list_events",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "replyIncludes": [
+              "Eventos para proxima semana",
+              "Reuniao - 10:00 as 11:00 - Planeamento",
+              "Consulta - 15:00 as 16:00 - Rotina"
+            ],
+            "replyExcludes": [
+              "Que periodo queres ver"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "list_follow_up_e_para_a_semana_after_month_question",
+      "turns": [
+        {
+          "content": "O que tenho marcado para este mes",
+          "options": {
+            "mockCalendarSearchResults": [
+              {
+                "pageId": "list-month-context-1",
+                "title": "Almoco",
+                "date": "{{currentMonthDay:10}}",
+                "startTime": "12:00",
+                "endTime": "13:00"
+              }
+            ]
+          },
+          "expect": {
+            "command": "list_events",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "replyIncludes": [
+              "Eventos para este mes"
+            ]
+          }
+        },
+        {
+          "content": "e para a semana ?",
+          "options": {
+            "mockCalendarSearchResults": [
+              {
+                "pageId": "list-next-week-followup-1",
+                "title": "Treino",
+                "date": "{{nextWeekday:thursday}}",
+                "startTime": "19:00",
+                "endTime": "20:00",
+                "description": "Perna"
+              }
+            ]
+          },
+          "expect": {
+            "command": "list_events",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "replyIncludes": [
+              "Eventos para proxima semana",
+              "Treino - 19:00 as 20:00 - Perna"
+            ],
+            "replyExcludes": [
+              "Que periodo queres ver"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

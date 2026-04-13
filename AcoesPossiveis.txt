@@ -1,0 +1,312 @@
+Acoes Possiveis e Formas de Utilizacao
+
+Este bloco serve como guia rapido do que o agente ja consegue fazer no estado atual.
+
+1. Criar um evento simples
+
+Objetivo:
+- criar um unico evento no Notion
+
+Forma mais direta:
+- enviar logo titulo, data, hora de inicio, hora de fim e descricao opcional
+
+Exemplos:
+- Marca Reuniao para sexta das 14:00 as 15:00 onde falamos sobre o Projeto
+- Agenda jantar amanha das 20:00 as 22:00 levar a prenda de anos
+- Cria consulta para dia 29 as 12:00 ate as 13:00 levar o exame
+
+Se faltarem campos:
+- o bot faz follow-up
+- pergunta apenas o que falta
+
+Exemplos:
+- Marca reuniao para sexta
+- resposta esperada: pergunta pelas horas
+
+- Marca jantar amanha as 20:00
+- resposta esperada: pergunta ate que horas dura
+
+- Marca consulta para sexta das 10:00 as 11:00
+- resposta esperada: pergunta se queres uma descricao ou permite saltar
+
+Respostas curtas aceites em follow-up:
+- 11
+- ate as 11
+- mesma hora
+- mesmas horas
+- saltar
+- nao
+- nada
+
+2. Criar um evento de varios dias, dia todo
+
+Objetivo:
+- criar um unico evento com data de inicio e data de fim
+- sem hora de inicio e sem hora de fim
+
+Exemplos:
+- Marca ferias de 10 a 25 do proximo mes
+- Marca ferias de 10 a 25 deste mes
+- Vou estar de ferias de 10 a 25
+
+Comportamento esperado:
+- o bot nao pergunta horas
+- trata o evento como dia todo
+- pergunta apenas a descricao opcional
+
+Exemplo de follow-up:
+- utilizador: Marca ferias de 10 a 25 do proximo mes
+- bot: Tens alguma nota sobre as ferias? (podes 'saltar' se quiseres)
+- utilizador: saltar
+
+Resultado esperado:
+- cria um unico registo no Notion
+- `Date` fica com intervalo inicio -> fim
+- o evento aparece como dia todo
+
+3. Criar varios eventos na mesma frase
+
+Objetivo:
+- criar mais do que um evento num unico pedido
+
+Exemplos:
+- Cria a reuniao para as 11 desta sexta e o almoco para quinta as 12
+- Cria o almoco para dia 29 as 12 e a consulta para dia 30 as 15
+
+Comportamento esperado:
+- se faltarem horas de fim, o bot pergunta por ordem
+- se a descricao vier para varios eventos, ele pode interpretar por ordem ou por referencia ao titulo
+
+Exemplos de resposta:
+- O almoco as 13 e a consulta as 14
+- No almoco meter Tenho que levar o carro e na consulta nao quero nada
+
+Interpretacao esperada:
+- "nao quero nada" ou "nada" significa sem descricao para esse evento
+
+4. Criar eventos recorrentes
+
+Objetivo:
+- criar varias ocorrencias da mesma atividade
+
+Exemplos:
+- Marca me reuniao para todas sextas deste mes as 11
+- Cria treinos todas as segundas as 19:00
+
+Comportamento esperado:
+- o bot pergunta ate que horas dura
+- depois pergunta ate quando repete, se isso nao estiver claro
+- no fim pergunta descricao opcional
+
+Exemplos de follow-up:
+- ate as 12:30
+- ate ao fim do ano
+- ate ao fim do mes
+- saltar
+
+5. Alterar um evento
+
+Objetivo:
+- mudar data, hora ou manter a mesma hora ao mover um evento
+
+Exemplos:
+- Altera o almoco de amanha para dia 30
+- Altera a reuniao de sexta para dia 10 mesmas horas
+- Altera a hora da consulta de amanha para as 12
+- Altera o almoco de amanha para dia 30 e a reuniao de sexta para dia 10
+
+Comportamento esperado:
+- se mudares so a data, o bot pergunta se queres manter a mesma hora
+- se disseres "mesma hora" ou "mesmas horas", nao volta a perguntar pelas horas
+- se disseres explicitamente "altera a hora", o bot pede as novas horas
+- se mudares so a hora de inicio, o sistema tenta preservar a duracao atual do evento
+
+Exemplos de follow-up:
+- mesma hora
+- mesmas horas
+- mete para as 14:00 ate as 15:00
+- o das 10
+- ambos
+
+Exemplos com ambiguidade:
+- Altera o almoco de amanha para dia 30
+- se existirem 2 almocos amanha, o bot pergunta qual
+- podes responder:
+  - 1
+  - 2
+  - o das 10
+  - ambos
+
+6. Alterar varios eventos
+
+Objetivo:
+- atualizar varios eventos num unico pedido
+
+Exemplos:
+- Altera o almoco e a reuniao de amanha para dia 30 mesmas horas
+- Altera o almoco de amanha para dia 30 e a reuniao de sexta para dia 10
+- Altera a consulta para dia 30 e o treino para dia 10
+
+Comportamento esperado:
+- se houver ambiguidade, o bot pede refinamento
+- se as horas tiverem de ser confirmadas, pergunta pela ordem natural dos eventos
+
+7. Apagar um evento
+
+Objetivo:
+- remover um ou mais eventos do Notion
+
+Exemplos:
+- Apaga a reuniao de sexta
+- Apaga o almoco de amanha
+- Apaga tudo o que tenho marcado para sexta
+- Apaga tudo desta semana
+
+Comportamento esperado:
+- se encontrar um unico evento, pede confirmacao
+- se encontrar varios, lista-os com numero, titulo, data, horas e descricao se existir
+- depois podes filtrar a lista
+
+Respostas aceites em follow-up:
+- 1
+- 2
+- primeira
+- segunda
+- ambos
+- o das 10
+- a reuniao das 10 e das 15
+- so o 1 e 3
+- so os de segunda
+- so a reuniao de segunda as 10 e o almoco de terca
+
+Exemplo completo:
+- Apaga tudo o que tenho marcado para sexta
+- bot lista 3 eventos
+- resposta do utilizador: Nao, so queria apagar o 1 e 3
+- bot reduz a selecao e pede confirmacao
+
+8. Classificacao automatica de category
+
+Objetivo:
+- atribuir automaticamente uma category ao evento
+
+Categorias base atuais:
+- Reuniao
+- Consulta
+- Trabalho
+- Estudo
+- Treino
+- Viagem
+- Jantar
+- Lanche
+- Aniversario
+- Outros
+
+Exemplos de normalizacao:
+- conferencia, workshop, seminario, palestra -> Reuniao
+- pequeno almoco, almoco, brunch, cafe -> Lanche
+
+Comportamento esperado:
+- se a category ja existir no Notion, reutiliza
+- se nao existir e nao houver encaixe razoavel, pode criar uma nova
+- tenta evitar repetir cores enquanto ainda houver cores livres
+
+9. Respostas especiais que o sistema entende
+
+Para descricoes:
+- saltar
+- nao
+- nada
+- nao quero nada
+- sem descricao
+
+Para selecao:
+- 1
+- 2
+- primeira
+- segunda
+- ambos
+- o das 10
+
+Para updates:
+- mesma hora
+- mesmas horas
+
+10. Ver eventos marcados
+
+Objetivo:
+- consultar o que esta marcado num dia, num periodo curto ou num mes inteiro
+
+Exemplos diretos:
+- O que tenho marcado para hoje
+- O que tenho marcado para amanha
+- O que tenho marcado ate ao final da semana
+- O que tenho marcado para este mes
+- O que tenho marcado para o proximo mes
+- Faz me um resumo para o proximo mes
+
+Comportamento esperado:
+- "hoje" mostra os eventos do dia atual
+- "amanha" mostra os eventos do dia seguinte
+- "ate ao final da semana" inclui desde hoje ate domingo
+- "este mes" mostra os eventos do mes atual
+- "proximo mes" mostra os eventos do mes seguinte
+- se disseres apenas algo generico como "O que tenho marcado", o bot pede o periodo
+
+Exemplo de follow-up:
+- utilizador: O que tenho marcado
+- bot: Que periodo queres ver? Podes dizer hoje, amanha, ate ao final da semana, este mes ou o proximo mes.
+- utilizador: amanha
+
+Continuidade de contexto:
+- se acabaste de pedir uma listagem e responderes algo curto como "e para este?" ou "e para o proximo?", o bot tenta manter o contexto da pergunta anterior
+- exemplo:
+  - utilizador: O que tenho marcado para o proximo mes?
+  - bot: Nao tens eventos marcados para proximo mes.
+  - utilizador: e para este?
+  - bot: interpreta como "este mes" e mostra os eventos do mes atual
+
+Quebra de contexto:
+- se responderes algo que ja nao tem a ver com listagem, como "Ola" ou "Boa nice", o bot nao deve continuar a tratar isso como pedido de eventos
+- depois disso, podes mudar logo para outra acao
+- exemplo:
+  - utilizador: O que tenho marcado para este mes?
+  - bot: mostra os eventos
+  - utilizador: Boa nice
+  - bot: responde como chat normal
+  - utilizador: Marca reuniao para sexta das 14 as 15 sem descricao
+  - bot: volta para create_event normalmente
+
+Formato esperado da resposta:
+- para um dia curto, responde com lista simples por ordem
+- para periodos maiores, organiza por dia ou por semana
+- se pedires "resumo", usa formato compacto sem descricao e sem hora de fim
+- se nao existirem eventos, diz explicitamente que nao tens nada marcado nesse periodo
+
+11. Pedir um resumo dos eventos
+
+Objetivo:
+- obter uma visao mais curta e limpa, sem tanto detalhe
+
+Exemplos:
+- Faz me um resumo para este mes
+- Resume o que tenho este mes
+
+Comportamento esperado:
+- nao mostra descricoes
+- nao mostra horas de fim
+- privilegia titulo e hora de inicio
+- em periodos longos, organiza de forma compacta por semana ou por dia
+
+Exemplo de interpretacao:
+- "Faz me um resumo para este mes"
+- resposta esperada: lista compacta com eventos do mes, sem descricao e sem hora final
+
+12. Estado geral atual
+
+Nota importante:
+- create_event esta funcional e bem coberto com evals
+- update_event esta funcional e bem coberto com evals
+- delete_event esta funcional e bem coberto com evals
+- list_events ja suporta hoje, amanha, ate ao final da semana e este mes
+- resumo mensal tambem ja esta suportado

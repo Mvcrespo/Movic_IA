@@ -1,0 +1,145 @@
+Como Funciona
+
+Resumo
+- O projeto arranca com `docker compose up --build`.
+- O `docker-compose.yml` sobe todos os serviços necessários.
+- Cada serviço corre no seu próprio container.
+- O Discord recebe a mensagem, o Orchestrator interpreta e o Calendar Service grava na base local.
+- Apple, Google e Notion são sincronizações opcionais.
+
+Docker Compose
+
+O [docker-compose.yml](c:\Users\MvCrespoPC\SynologyDrive\Escola\Metrado\1 - Ano\2 - Semestre\ComputacaoEmNuvem\IndividualProject\Projeto\docker-compose.yml) é o ficheiro principal da infraestrutura.
+
+Ele faz:
+- define que containers existem
+- define as variáveis de ambiente
+- define portas
+- liga os serviços entre si
+- garante a ordem de arranque com `depends_on`
+
+Serviços que sobe
+- `gateway`
+  - bot Discord
+- `dashboard-service`
+  - dashboard web
+- `orchestrator`
+  - coordena a conversa
+- `postgres`
+  - base principal
+- `config-postgres`
+  - base das configurações
+- `llm-service`
+  - decide a intenção
+- `normalizer-service`
+  - limpa a frase
+- `extractor-service`
+  - extrai campos
+- `validator-service`
+  - valida a extração
+- `calendar-service`
+  - grava e consulta eventos
+- `apple-connector`
+  - sincroniza com Apple
+- `google-connector`
+  - sincroniza com Google
+- `notion-connector`
+  - sincroniza com Notion
+- `ollama`
+  - corre os modelos localmente
+
+Fluxo principal
+
+1. O utilizador envia uma DM no Discord.
+2. O `gateway` recebe a mensagem.
+3. O `gateway` envia o pedido ao `orchestrator`.
+4. O `orchestrator` usa:
+   - `normalizer-service`
+   - `llm-service`
+   - `extractor-service`
+   - `validator-service`
+5. Se o pedido estiver completo, o `orchestrator` chama o `calendar-service`.
+6. O `calendar-service` grava primeiro no `postgres`.
+7. Se houver connectors ligados, o `calendar-service` notifica:
+   - Apple
+   - Google
+   - Notion
+8. A resposta volta ao Discord.
+
+Bases de dados
+
+1. `postgres`
+- guarda eventos
+- guarda histórico da conversa
+- guarda pending commands
+- guarda links entre evento local e providers
+
+2. `config-postgres`
+- guarda configuração da dashboard
+- guarda chat ligado ao Discord
+- guarda códigos de ligação
+- guarda configuração Apple / Google / Notion
+
+Sincronização
+
+- A base local é sempre o centro.
+- Apple, Google e Notion sincronizam com a base local.
+- Quando uma alteração entra de um provider:
+  - atualiza a base local
+  - depois propaga para os outros providers
+
+Dockerfiles
+
+Cada serviço tem o seu `Dockerfile`.
+
+Todos seguem praticamente o mesmo padrão:
+
+1. `FROM node:22-alpine`
+- usa uma imagem Node leve
+
+2. `WORKDIR /app`
+- define a pasta de trabalho dentro do container
+
+3. `COPY package.json package-lock.json ./`
+- copia o `package.json` da raiz
+- necessário porque o projeto usa workspaces
+
+4. `COPY <servico>/package.json ./<servico>/package.json`
+- copia o `package.json` do serviço
+
+5. `COPY <servico>/tsconfig.json ./<servico>/tsconfig.json`
+- copia a configuração TypeScript do serviço
+
+6. `RUN npm ci`
+- instala dependências de forma consistente
+
+7. `COPY <servico>/src ./<servico>/src`
+- copia o código fonte do serviço
+
+8. `RUN npm run build --workspace <servico>`
+- compila o serviço
+
+9. `CMD ["npm", "run", "start", "--workspace", "<servico>"]`
+- arranca o serviço quando o container sobe
+
+Comandos úteis
+
+Arrancar tudo:
+```powershell
+docker compose up --build
+```
+
+Arrancar em background:
+```powershell
+docker compose up -d --build
+```
+
+Ver logs:
+```powershell
+docker compose logs -f
+```
+
+Parar tudo:
+```powershell
+docker compose down
+```

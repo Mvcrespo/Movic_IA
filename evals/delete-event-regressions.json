@@ -1,0 +1,718 @@
+{
+  "suite": "delete_event_regressions",
+  "cases": [
+    {
+      "id": "delete_single_event_requires_confirmation",
+      "turns": [
+        {
+          "content": "Apaga a reuniao na sexta",
+          "options": {
+            "mockCalendarSearchResults": [
+              {
+                "pageId": "evt-1",
+                "title": "Reuniao",
+                "date": "2026-04-03",
+                "startTime": "10:00",
+                "endTime": "11:30",
+                "description": "Projeto Fire"
+              }
+            ]
+          },
+          "expect": {
+            "command": "delete_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "deleteConfirmation"
+            ],
+            "replyIncludes": [
+              "Queres mesmo apagar",
+              "Reuniao",
+              "Projeto Fire"
+            ]
+          }
+        },
+        {
+          "content": "sim",
+          "expect": {
+            "command": "delete_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "delete_single_event_can_be_cancelled",
+      "turns": [
+        {
+          "content": "Apaga o jantar de quinta",
+          "options": {
+            "mockCalendarSearchResults": [
+              {
+                "pageId": "evt-2",
+                "title": "Jantar",
+                "date": "2026-04-02",
+                "startTime": "20:00",
+                "endTime": "22:00",
+                "description": "Levar o carro"
+              }
+            ]
+          },
+          "expect": {
+            "command": "delete_event",
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "deleteConfirmation"
+            ],
+            "replyIncludes": [
+              "Jantar"
+            ]
+          }
+        },
+        {
+          "content": "nao",
+          "expect": {
+            "command": "delete_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": false,
+            "replyIncludes": [
+              "nao apaguei nada"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "delete_ambiguous_events_requires_selection",
+      "turns": [
+        {
+          "content": "Apaga a reuniao na sexta",
+          "options": {
+            "mockCalendarSearchResults": [
+              {
+                "pageId": "evt-10",
+                "title": "Reuniao",
+                "date": "2026-04-03",
+                "startTime": "10:00",
+                "endTime": "11:00",
+                "description": "Projeto Multiagente"
+              },
+              {
+                "pageId": "evt-11",
+                "title": "Reuniao",
+                "date": "2026-04-03",
+                "startTime": "15:00",
+                "endTime": "16:00",
+                "description": "Orcamento final"
+              }
+            ]
+          },
+          "expect": {
+            "command": "delete_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "deleteSelection"
+            ],
+            "replyIncludes": [
+              "1.",
+              "2.",
+              "Qual queres apagar"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "delete_selection_by_number_then_confirm",
+      "turns": [
+        {
+          "content": "Apaga a reuniao na sexta",
+          "options": {
+            "mockCalendarSearchResults": [
+              {
+                "pageId": "evt-10",
+                "title": "Reuniao",
+                "date": "2026-04-03",
+                "startTime": "10:00",
+                "endTime": "11:00",
+                "description": "Projeto Multiagente"
+              },
+              {
+                "pageId": "evt-11",
+                "title": "Reuniao",
+                "date": "2026-04-03",
+                "startTime": "15:00",
+                "endTime": "16:00",
+                "description": "Orcamento final"
+              }
+            ]
+          },
+          "expect": {
+            "missingFieldsIncludes": [
+              "deleteSelection"
+            ]
+          }
+        },
+        {
+          "content": "2",
+          "expect": {
+            "command": "delete_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "deleteConfirmation"
+            ],
+            "replyIncludes": [
+              "Orcamento final",
+              "Queres mesmo apagar"
+            ]
+          }
+        },
+        {
+          "content": "sim",
+          "expect": {
+            "command": "delete_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "delete_selection_by_ordinal",
+      "turns": [
+        {
+          "content": "Apaga a reuniao na sexta",
+          "options": {
+            "mockCalendarSearchResults": [
+              {
+                "pageId": "evt-20",
+                "title": "Reuniao",
+                "date": "2026-04-03",
+                "startTime": "09:00",
+                "endTime": "10:00",
+                "description": "Sprint planning"
+              },
+              {
+                "pageId": "evt-21",
+                "title": "Reuniao",
+                "date": "2026-04-03",
+                "startTime": "17:00",
+                "endTime": "18:00",
+                "description": "Retro semanal"
+              }
+            ]
+          },
+          "expect": {
+            "missingFieldsIncludes": [
+              "deleteSelection"
+            ]
+          }
+        },
+        {
+          "content": "segunda",
+          "expect": {
+            "missingFieldsIncludes": [
+              "deleteConfirmation"
+            ],
+            "replyIncludes": [
+              "Retro semanal"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "delete_selection_accepts_ambos",
+      "turns": [
+        {
+          "content": "Apaga a reuniao na sexta",
+          "options": {
+            "mockCalendarSearchResults": [
+              {
+                "pageId": "evt-30",
+                "title": "Reuniao",
+                "date": "2026-04-03",
+                "startTime": "10:00",
+                "endTime": "11:00",
+                "description": "Projeto A"
+              },
+              {
+                "pageId": "evt-31",
+                "title": "Reuniao",
+                "date": "2026-04-03",
+                "startTime": "14:00",
+                "endTime": "15:00",
+                "description": "Projeto B"
+              }
+            ]
+          },
+          "expect": {
+            "missingFieldsIncludes": [
+              "deleteSelection"
+            ]
+          }
+        },
+        {
+          "content": "ambos",
+          "expect": {
+            "missingFieldsIncludes": [
+              "deleteConfirmation"
+            ],
+            "replyIncludes": [
+              "2 eventos",
+              "Projeto A",
+              "Projeto B"
+            ]
+          }
+        },
+        {
+          "content": "sim",
+          "expect": {
+            "isComplete": true,
+            "needsCalendarAction": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "delete_all_for_day_requires_confirmation",
+      "turns": [
+        {
+          "content": "Apaga tudo de sexta",
+          "options": {
+            "mockCalendarSearchResults": [
+              {
+                "pageId": "evt-40",
+                "title": "Reuniao",
+                "date": "2026-04-03",
+                "startTime": "10:00",
+                "endTime": "11:30",
+                "description": "Projeto Fire"
+              },
+              {
+                "pageId": "evt-41",
+                "title": "Consulta",
+                "date": "2026-04-03",
+                "startTime": "16:00",
+                "endTime": "17:00",
+                "description": "Levar analises"
+              }
+            ]
+          },
+          "expect": {
+            "command": "delete_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "deleteConfirmation"
+            ],
+            "replyIncludes": [
+              "2 eventos",
+              "Queres mesmo apagar todos estes eventos"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "delete_generic_request_without_target_asks_for_more",
+      "turns": [
+        {
+          "content": "Apaga um evento",
+          "expect": {
+            "command": "delete_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "deleteTarget"
+            ],
+            "replyIncludes": [
+              "nome ou o dia"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "delete_no_matches_returns_clear_reply",
+      "turns": [
+        {
+          "content": "Apaga a consulta de sexta",
+          "options": {
+            "mockCalendarSearchResults": []
+          },
+          "expect": {
+            "command": "delete_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": false,
+            "replyIncludes": [
+              "Nao encontrei"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "delete_selection_can_be_cancelled_before_confirming",
+      "turns": [
+        {
+          "content": "Apaga a reuniao na sexta",
+          "options": {
+            "mockCalendarSearchResults": [
+              {
+                "pageId": "evt-50",
+                "title": "Reuniao",
+                "date": "2026-04-03",
+                "startTime": "10:00",
+                "endTime": "11:00",
+                "description": "Projeto A"
+              },
+              {
+                "pageId": "evt-51",
+                "title": "Reuniao",
+                "date": "2026-04-03",
+                "startTime": "12:00",
+                "endTime": "13:00",
+                "description": "Projeto B"
+              }
+            ]
+          },
+          "expect": {
+            "missingFieldsIncludes": [
+              "deleteSelection"
+            ]
+          }
+        },
+        {
+          "content": "nao",
+          "expect": {
+            "command": "delete_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": false,
+            "replyIncludes": [
+              "nao apaguei nada"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "delete_week_range_can_be_refined_by_indexes",
+      "turns": [
+        {
+          "content": "Apaga tudo desta semana",
+          "options": {
+            "mockCalendarSearchResults": [
+              {
+                "pageId": "evt-60",
+                "title": "Reuniao",
+                "date": "2026-03-30",
+                "startTime": "10:00",
+                "endTime": "11:00",
+                "description": "Projeto Fire"
+              },
+              {
+                "pageId": "evt-61",
+                "title": "Almoco",
+                "date": "2026-03-31",
+                "startTime": "12:30",
+                "endTime": "13:30",
+                "description": "Com a equipa"
+              },
+              {
+                "pageId": "evt-62",
+                "title": "Reuniao",
+                "date": "2026-04-03",
+                "startTime": "15:00",
+                "endTime": "16:30",
+                "description": "Projeto MultiAgente"
+              },
+              {
+                "pageId": "evt-63",
+                "title": "Consulta",
+                "date": "2026-04-04",
+                "startTime": "09:00",
+                "endTime": "09:30",
+                "description": "Levar exames"
+              }
+            ]
+          },
+          "expect": {
+            "command": "delete_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "deleteConfirmation"
+            ],
+            "replyIncludes": [
+              "4 eventos para apagar",
+              "Reuniao",
+              "Consulta"
+            ]
+          }
+        },
+        {
+          "content": "Nao so queria apagar o 1 e 3",
+          "expect": {
+            "command": "delete_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "deleteConfirmation"
+            ],
+            "replyIncludes": [
+              "2 eventos para apagar",
+              "Projeto Fire",
+              "Projeto MultiAgente"
+            ]
+          }
+        },
+        {
+          "content": "sim",
+          "expect": {
+            "command": "delete_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "delete_week_range_can_be_refined_by_weekday_title_and_time",
+      "turns": [
+        {
+          "content": "Apaga tudo desta semana",
+          "options": {
+            "mockCalendarSearchResults": [
+              {
+                "pageId": "evt-70",
+                "title": "Reuniao",
+                "date": "2026-03-30",
+                "startTime": "10:00",
+                "endTime": "11:00",
+                "description": "Projeto Fire"
+              },
+              {
+                "pageId": "evt-71",
+                "title": "Reuniao",
+                "date": "2026-03-30",
+                "startTime": "15:00",
+                "endTime": "16:00",
+                "description": "Retro"
+              },
+              {
+                "pageId": "evt-72",
+                "title": "Almoco",
+                "date": "2026-03-31",
+                "startTime": "12:30",
+                "endTime": "13:30",
+                "description": "Com a equipa"
+              },
+              {
+                "pageId": "evt-73",
+                "title": "Consulta",
+                "date": "2026-04-03",
+                "startTime": "16:00",
+                "endTime": "17:00",
+                "description": "Levar exames"
+              }
+            ]
+          },
+          "expect": {
+            "missingFieldsIncludes": [
+              "deleteConfirmation"
+            ]
+          }
+        },
+        {
+          "content": "So a reuniao de segunda as 10 e o almoco de terca",
+          "expect": {
+            "command": "delete_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "deleteConfirmation"
+            ],
+            "replyIncludes": [
+              "2 eventos para apagar",
+              "Projeto Fire",
+              "Com a equipa"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "delete_multi_clause_initial_request_auto_selects_targets",
+      "turns": [
+        {
+          "content": "Apaga segunda a reuniao as 10 e na terca apaga o almoco",
+          "options": {
+            "mockCalendarSearchResults": [
+              {
+                "pageId": "evt-80",
+                "title": "Reuniao",
+                "date": "2026-04-06",
+                "startTime": "10:00",
+                "endTime": "11:00",
+                "description": "Projeto Fire"
+              },
+              {
+                "pageId": "evt-81",
+                "title": "Reuniao",
+                "date": "2026-04-06",
+                "startTime": "15:00",
+                "endTime": "16:00",
+                "description": "Retro"
+              },
+              {
+                "pageId": "evt-82",
+                "title": "Almoco",
+                "date": "2026-04-07",
+                "startTime": "12:30",
+                "endTime": "13:30",
+                "description": "Com a equipa"
+              }
+            ]
+          },
+          "expect": {
+            "command": "delete_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "deleteConfirmation"
+            ],
+            "replyIncludes": [
+              "2 eventos para apagar",
+              "Projeto Fire",
+              "Com a equipa"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "delete_week_range_can_be_refined_to_weekday_only",
+      "turns": [
+        {
+          "content": "Apaga tudo desta semana",
+          "options": {
+            "mockCalendarSearchResults": [
+              {
+                "pageId": "evt-90",
+                "title": "Reuniao",
+                "date": "2026-03-30",
+                "startTime": "10:00",
+                "endTime": "11:00",
+                "description": "Projeto Fire"
+              },
+              {
+                "pageId": "evt-91",
+                "title": "Treino",
+                "date": "2026-03-30",
+                "startTime": "18:00",
+                "endTime": "19:00",
+                "description": "Ginasio"
+              },
+              {
+                "pageId": "evt-92",
+                "title": "Almoco",
+                "date": "2026-03-31",
+                "startTime": "12:30",
+                "endTime": "13:30",
+                "description": "Com a equipa"
+              }
+            ]
+          },
+          "expect": {
+            "missingFieldsIncludes": [
+              "deleteConfirmation"
+            ]
+          }
+        },
+        {
+          "content": "So os de segunda",
+          "expect": {
+            "command": "delete_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "deleteConfirmation"
+            ],
+            "replyIncludes": [
+              "2 eventos para apagar",
+              "Projeto Fire",
+              "Ginasio"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "delete_week_range_can_be_refined_by_same_title_multiple_start_times",
+      "turns": [
+        {
+          "content": "Apaga tudo desta semana",
+          "options": {
+            "mockCalendarSearchResults": [
+              {
+                "pageId": "evt-100",
+                "title": "Reuniao",
+                "date": "2026-04-03",
+                "startTime": "10:00",
+                "endTime": "11:30",
+                "description": "Projeto Fire"
+              },
+              {
+                "pageId": "evt-101",
+                "title": "Reuniao",
+                "date": "2026-04-03",
+                "startTime": "12:00",
+                "endTime": "14:30",
+                "description": "Cliente X"
+              },
+              {
+                "pageId": "evt-102",
+                "title": "Reuniao",
+                "date": "2026-04-03",
+                "startTime": "15:00",
+                "endTime": "16:30",
+                "description": "Projeto MultiAgente"
+              }
+            ]
+          },
+          "expect": {
+            "missingFieldsIncludes": [
+              "deleteConfirmation"
+            ]
+          }
+        },
+        {
+          "content": "Nao quero so apagar a reuniao das 10 e das 15",
+          "expect": {
+            "command": "delete_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "deleteConfirmation"
+            ],
+            "replyIncludes": [
+              "2 eventos para apagar",
+              "Projeto Fire",
+              "Projeto MultiAgente"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
