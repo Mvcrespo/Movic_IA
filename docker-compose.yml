@@ -2,6 +2,7 @@
 
 services:
   gateway:
+    image: ghcr.io/mvcrespo/movic-gateway:latest
     build:
       context: .
       dockerfile: discord/Dockerfile
@@ -15,6 +16,7 @@ services:
     restart: unless-stopped
 
   dashboard-service:
+    image: ghcr.io/mvcrespo/movic-dashboard:latest
     build:
       context: .
       dockerfile: dashboard/Dockerfile
@@ -44,6 +46,7 @@ services:
     restart: unless-stopped
 
   orchestrator:
+    image: ghcr.io/mvcrespo/movic-orchestrator:latest
     build:
       context: .
       dockerfile: orchestrator/Dockerfile
@@ -108,6 +111,7 @@ services:
     restart: unless-stopped
 
   llm-service:
+    image: ghcr.io/mvcrespo/movic-llm-service:latest
     build:
       context: .
       dockerfile: llm-service/Dockerfile
@@ -127,6 +131,7 @@ services:
     restart: unless-stopped
 
   normalizer-service:
+    image: ghcr.io/mvcrespo/movic-normalizer-service:latest
     build:
       context: .
       dockerfile: normalizer-service/Dockerfile
@@ -146,6 +151,7 @@ services:
     restart: unless-stopped
 
   extractor-service:
+    image: ghcr.io/mvcrespo/movic-extractor-service:latest
     build:
       context: .
       dockerfile: extractor-service/Dockerfile
@@ -165,6 +171,7 @@ services:
     restart: unless-stopped
 
   validator-service:
+    image: ghcr.io/mvcrespo/movic-validator-service:latest
     build:
       context: .
       dockerfile: validator-service/Dockerfile
@@ -184,6 +191,7 @@ services:
     restart: unless-stopped
 
   calendar-service:
+    image: ghcr.io/mvcrespo/movic-calendar-service:latest
     build:
       context: .
       dockerfile: calendar-service/Dockerfile
@@ -212,6 +220,7 @@ services:
     restart: unless-stopped
 
   apple-connector:
+    image: ghcr.io/mvcrespo/movic-apple-connector:latest
     build:
       context: .
       dockerfile: apple-connector/Dockerfile
@@ -237,6 +246,7 @@ services:
     restart: unless-stopped
 
   google-connector:
+    image: ghcr.io/mvcrespo/movic-google-connector:latest
     build:
       context: .
       dockerfile: google-connector/Dockerfile
@@ -264,6 +274,7 @@ services:
     restart: unless-stopped
 
   notion-connector:
+    image: ghcr.io/mvcrespo/movic-notion-connector:latest
     build:
       context: .
       dockerfile: notion-connector/Dockerfile
@@ -308,7 +319,5 @@ services:
 
 volumes:
   ollama-data:
-    external: true
-    name: discord_ollama-data
   postgres-data:
   config-postgres-data:
