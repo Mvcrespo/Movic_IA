@@ -6235,7 +6235,17 @@ function applyPendingFieldAnswerHeuristics(
   }
 
   if (pending.missingFields.includes("endTime") && !hasNonEmptyValue(extractedData.endTime)) {
-    const inferredEndTime = timeData.endTime ?? shortTimeReply;
+    const currentStartTime =
+      normalizeClockTimeValue(extractedData.startTime) ??
+      normalizeClockTimeValue(extractedData.time) ??
+      normalizeClockTimeValue(pending.extractedData?.startTime) ??
+      normalizeClockTimeValue(pending.extractedData?.time);
+    const explicitDurationMinutes = extractExplicitDurationMinutes(trimmedContent);
+    const durationBasedEndTime =
+      currentStartTime && explicitDurationMinutes !== null
+        ? addMinutesToClockTime(currentStartTime, explicitDurationMinutes)
+        : null;
+    const inferredEndTime = timeData.endTime ?? shortTimeReply ?? durationBasedEndTime;
 
     if (inferredEndTime) {
       nextCommand = "create_event";
@@ -6252,6 +6262,7 @@ function applyPendingFieldAnswerHeuristics(
     pending.missingFields.includes("description") &&
     !hasNonEmptyValue(extractedData.description)
   ) {
+    const explicitDurationMinutes = extractExplicitDurationMinutes(trimmedContent);
     if (isDescriptionSkipReply(trimmedContent)) {
       nextCommand = "create_event";
       nextHasCommand = true;
@@ -6262,6 +6273,7 @@ function applyPendingFieldAnswerHeuristics(
     } else if (
       trimmedContent.length > 0 &&
       !looksLikeTemporalOnly(trimmedContent) &&
+      explicitDurationMinutes === null &&
       !timeData.startTime &&
       !timeData.endTime
     ) {
@@ -6344,9 +6356,19 @@ function enrichCreateEventInterpretation(
   missing.delete("category");
 
   if (!hasNonEmptyValue(extracted.rawTime)) {
-    delete extracted.time;
-    delete extracted.startTime;
-    delete extracted.endTime;
+    if (hasNonEmptyValue(extracted.startTime) && hasNonEmptyValue(extracted.endTime)) {
+      extracted.rawTime = `${extracted.startTime} ate ${extracted.endTime}`;
+    } else if (hasNonEmptyValue(extracted.startTime)) {
+      extracted.rawTime = String(extracted.startTime);
+    } else if (hasNonEmptyValue(extracted.time)) {
+      extracted.rawTime = String(extracted.time);
+    } else if (hasNonEmptyValue(extracted.endTime)) {
+      extracted.rawTime = String(extracted.endTime);
+    } else {
+      delete extracted.time;
+      delete extracted.startTime;
+      delete extracted.endTime;
+    }
   }
 
   if (isDefaultAssumedTime(extracted.time, extracted.startTime, extracted.endTime)) {
@@ -6592,14 +6614,18 @@ function enrichCreateEventInterpretation(
     };
   }
 
+  const visibleMissingFields = [...missing].filter((field) => !field.startsWith("__"));
+
   return {
     ...interpretation,
     extractedData: extracted,
-    missingFields: [...missing],
-    isComplete: interpretation.hasCommand ? missing.size === 0 : interpretation.isComplete,
-    shouldAskFollowUp: missing.size > 0 ? true : interpretation.shouldAskFollowUp,
+    missingFields: visibleMissingFields,
+    isComplete:
+      interpretation.hasCommand ? visibleMissingFields.length === 0 : interpretation.isComplete,
+    shouldAskFollowUp:
+      visibleMissingFields.length > 0 ? true : interpretation.shouldAskFollowUp,
     needsCalendarAction:
-      interpretation.hasCommand && missing.size === 0 ? true : false
+      interpretation.hasCommand && visibleMissingFields.length === 0 ? true : false
   };
 }
 
@@ -6973,6 +6999,22 @@ function extractTimeData(text: string): {
     }
   }
 
+  // "das 20h as 22h" / "as 20h ate as 22h" â€” intervalo de horas inteiras com sufixo h
+  const rangeHourWithHMatch = normalized.match(
+    /\b(?:das?|as)\s+(\d{1,2})h\b.{0,12}?\b(?:ate|a|as)\s+(?:as?\s+)?(\d{1,2})h\b/u
+  );
+  if (rangeHourWithHMatch) {
+    const start = parseInt(rangeHourWithHMatch[1], 10);
+    const end = parseInt(rangeHourWithHMatch[2], 10);
+    if (start >= 0 && start <= 23 && end >= 0 && end <= 23 && start < end) {
+      return {
+        startTime: `${rangeHourWithHMatch[1].padStart(2, "0")}:00`,
+        endTime: `${rangeHourWithHMatch[2].padStart(2, "0")}:00`,
+        rawTime: rangeHourWithHMatch[0]
+      };
+    }
+  }
+
   // "as 11 ate as 11:15" â€” start hora inteira, end com minutos
   const mixedRangeMatch = normalized.match(
     /\bas\s+(\d{1,2})\b(?![:h]\d).{0,20}?\bate\s+(?:as?\s+)?(\d{1,2})[:h](\d{2})(?:\s*h)?\b/u
@@ -7027,8 +7069,15 @@ function extractTimeData(text: string): {
   // hora simples com minutos: "Ã s 11:30" / "11h30"
   const singleMatch = normalized.match(/\b(?:as\s*)?(\d{1,2})[:h](\d{2})\s*(?:h)?\b/u);
   if (singleMatch) {
+    const startTime = `${singleMatch[1].padStart(2, "0")}:${singleMatch[2]}`;
+    const explicitDurationMinutes = extractExplicitDurationMinutes(normalized);
+    const derivedEndTime =
+      explicitDurationMinutes !== null
+        ? addMinutesToClockTime(startTime, explicitDurationMinutes)
+        : null;
     return {
-      startTime: `${singleMatch[1].padStart(2, "0")}:${singleMatch[2]}`,
+      startTime,
+      ...(derivedEndTime ? { endTime: derivedEndTime } : {}),
       rawTime: singleMatch[0]
     };
   }
@@ -7038,14 +7087,127 @@ function extractTimeData(text: string): {
   if (singleHourMatch) {
     const hour = parseInt(singleHourMatch[1], 10);
     if (hour >= 0 && hour <= 23) {
+      const startTime = `${singleHourMatch[1].padStart(2, "0")}:00`;
+      const explicitDurationMinutes = extractExplicitDurationMinutes(normalized);
+      const derivedEndTime =
+        explicitDurationMinutes !== null
+          ? addMinutesToClockTime(startTime, explicitDurationMinutes)
+          : null;
       return {
-        startTime: `${singleHourMatch[1].padStart(2, "0")}:00`,
+        startTime,
+        ...(derivedEndTime ? { endTime: derivedEndTime } : {}),
         rawTime: singleHourMatch[0]
       };
     }
   }
 
+  // hora simples com sufixo h: "as 15h" / "as 19h"
+  const singleHourWithHMatch = normalized.match(/\bas\s+(\d{1,2})h\b/u);
+  if (singleHourWithHMatch) {
+    const hour = parseInt(singleHourWithHMatch[1], 10);
+    if (hour >= 0 && hour <= 23) {
+      const startTime = `${singleHourWithHMatch[1].padStart(2, "0")}:00`;
+      const explicitDurationMinutes = extractExplicitDurationMinutes(normalized);
+      const derivedEndTime =
+        explicitDurationMinutes !== null
+          ? addMinutesToClockTime(startTime, explicitDurationMinutes)
+          : null;
+      return {
+        startTime,
+        ...(derivedEndTime ? { endTime: derivedEndTime } : {}),
+        rawTime: singleHourWithHMatch[0]
+      };
+    }
+  }
+
   return {};
+}
+
+function extractExplicitDurationMinutes(text: string): number | null {
+  const normalized = text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+  if (!/\b(?:dura|durar|duracao|durante)\b/u.test(normalized)) {
+    return null;
+  }
+
+  const compactHourMinuteMatch = normalized.match(
+    /\b(?:dura|durante|com\s+duracao\s+de|duracao\s+de|que\s+dura)\b.{0,20}?\b(\d{1,2})h(\d{1,2})\b/u
+  );
+  if (compactHourMinuteMatch) {
+    const hours = Number.parseInt(compactHourMinuteMatch[1], 10);
+    const minutes = Number.parseInt(compactHourMinuteMatch[2], 10);
+    if (
+      Number.isFinite(hours) &&
+      Number.isFinite(minutes) &&
+      hours >= 0 &&
+      minutes >= 0 &&
+      minutes < 60
+    ) {
+      const total = hours * 60 + minutes;
+      if (total > 0) {
+        return total;
+      }
+    }
+  }
+
+  const hourMinuteMatch = normalized.match(
+    /\b(?:dura|durante|com\s+duracao\s+de|duracao\s+de|que\s+dura)\b.{0,20}?\b(\d{1,2})\s*h(?:oras?)?(?:\s*e\s*(\d{1,2})\s*(?:m|min|mins|minutos?))?\b/u
+  );
+  if (hourMinuteMatch) {
+    const hours = Number.parseInt(hourMinuteMatch[1], 10);
+    const minutes = hourMinuteMatch[2] ? Number.parseInt(hourMinuteMatch[2], 10) : 0;
+    if (
+      Number.isFinite(hours) &&
+      Number.isFinite(minutes) &&
+      hours >= 0 &&
+      minutes >= 0 &&
+      minutes < 60
+    ) {
+      const total = hours * 60 + minutes;
+      if (total > 0) {
+        return total;
+      }
+    }
+  }
+
+  const minuteOnlyMatch = normalized.match(
+    /\b(?:dura|durante|com\s+duracao\s+de|duracao\s+de|que\s+dura)\b.{0,20}?\b(\d{1,3})\s*(?:m|min|mins|minuto|minutos)\b/u
+  );
+  if (minuteOnlyMatch) {
+    const minutes = Number.parseInt(minuteOnlyMatch[1], 10);
+    if (Number.isFinite(minutes) && minutes > 0) {
+      return minutes;
+    }
+  }
+
+  if (
+    /\b(?:dura|durante|com\s+duracao\s+de|duracao\s+de|que\s+dura)\b.{0,20}?\buma\s+hora\s+e\s+meia\b/u.test(
+      normalized
+    )
+  ) {
+    return 90;
+  }
+
+  if (
+    /\b(?:dura|durante|com\s+duracao\s+de|duracao\s+de|que\s+dura)\b.{0,20}?\b(?:uma|1)\s+hora\b/u.test(
+      normalized
+    )
+  ) {
+    return 60;
+  }
+
+  if (
+    /\b(?:dura|durante|com\s+duracao\s+de|duracao\s+de|que\s+dura)\b.{0,20}?\bmeia\s+hora\b/u.test(
+      normalized
+    )
+  ) {
+    return 30;
+  }
+
+  return null;
 }
 
 function parseShortTimeReply(text: string): string | null {

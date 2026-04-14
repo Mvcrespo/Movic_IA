@@ -262,8 +262,9 @@ async function getModelNormalization(
     };
   };
 
-  const parsed = safeJsonParse(body.message?.content ?? "");
-  if (!parsed) {
+  const rawContent = body.message?.content ?? "";
+  const parsed = safeJsonParse(rawContent);
+  if (!parsed || typeof parsed !== "object") {
     if (env.ollamaTimingLogs) {
       console.log(
         `[normalizer-service] Ollama /api/chat concluiu com fallback em ${Date.now() - startedAt}ms`
@@ -276,12 +277,26 @@ async function getModelNormalization(
     };
   }
 
+  const correctedText =
+    typeof parsed.correctedText === "string" && parsed.correctedText.trim()
+      ? parsed.correctedText.trim()
+      : text;
+
+  const temporalExpressions = Array.isArray(parsed.temporalExpressions)
+    ? parsed.temporalExpressions
+    : [];
+
+  const notes = Array.isArray(parsed.notes)
+    ? parsed.notes.filter((note): note is string => typeof note === "string")
+    : [];
+
   const normalized = {
-    correctedText: parsed.correctedText.trim() || text,
-    temporalExpressions: Array.isArray(parsed.temporalExpressions)
-      ? parsed.temporalExpressions
-      : [],
-    notes: Array.isArray(parsed.notes) ? parsed.notes : []
+    correctedText,
+    temporalExpressions,
+    notes:
+      typeof parsed.correctedText === "string"
+        ? notes
+        : ["fallback: model JSON sem correctedText", ...notes]
   };
 
   if (env.ollamaTimingLogs) {
@@ -447,11 +462,36 @@ function validateNormalizeRequest(payload: unknown): asserts payload is Normaliz
 }
 
 function safeJsonParse(value: string): ModelNormalization | null {
-  try {
-    return JSON.parse(value) as ModelNormalization;
-  } catch {
-    return null;
+  for (const candidate of getJsonCandidates(value)) {
+    try {
+      return JSON.parse(candidate) as ModelNormalization;
+    } catch {
+      continue;
+    }
   }
+
+  return null;
+}
+
+function getJsonCandidates(value: string): string[] {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return [];
+  }
+
+  const candidates = new Set<string>([trimmed]);
+  const fencedMatch = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  if (fencedMatch?.[1]) {
+    candidates.add(fencedMatch[1].trim());
+  }
+
+  const firstBrace = trimmed.indexOf("{");
+  const lastBrace = trimmed.lastIndexOf("}");
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    candidates.add(trimmed.slice(firstBrace, lastBrace + 1).trim());
+  }
+
+  return [...candidates];
 }
 
 function sendJson(

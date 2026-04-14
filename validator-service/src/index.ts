@@ -464,11 +464,36 @@ function validateValidationResponse(
 }
 
 function safeJsonParse(value: string): ValidationResponse | null {
-  try {
-    return JSON.parse(value) as ValidationResponse;
-  } catch {
-    return null;
+  for (const candidate of getJsonCandidates(value)) {
+    try {
+      return JSON.parse(candidate) as ValidationResponse;
+    } catch {
+      continue;
+    }
   }
+
+  return null;
+}
+
+function getJsonCandidates(value: string): string[] {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return [];
+  }
+
+  const candidates = new Set<string>([trimmed]);
+  const fencedMatch = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  if (fencedMatch?.[1]) {
+    candidates.add(fencedMatch[1].trim());
+  }
+
+  const firstBrace = trimmed.indexOf("{");
+  const lastBrace = trimmed.lastIndexOf("}");
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    candidates.add(trimmed.slice(firstBrace, lastBrace + 1).trim());
+  }
+
+  return [...candidates];
 }
 
 function sendJson(

@@ -1,0 +1,306 @@
+{
+  "suite": "create_event_duration_period_regressions",
+  "cases": [
+    {
+      "id": "duration_reuniao_tomorrow_one_hour",
+      "turns": [
+        {
+          "content": "Marca me reuniao para amanha as 15h que dura uma 1h",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "replyIncludes": ["nota"],
+            "replyExcludes": ["a que horas", "ate que horas"],
+            "missingFieldsIncludes": ["description"],
+            "missingFieldsExcludes": ["startTime", "endTime", "__descriptionSkipped"],
+            "extractedDataSubset": {
+              "title": "Reuniao",
+              "date": "{{today+1d}}",
+              "startTime": "15:00",
+              "endTime": "16:00"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "duration_reuniao_tomorrow_compact_hour_half",
+      "turns": [
+        {
+          "content": "Marca me reuniao para amanha as 18h30 que dura 1h30",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "replyIncludes": ["nota"],
+            "replyExcludes": ["a que horas", "ate que horas"],
+            "missingFieldsIncludes": ["description"],
+            "missingFieldsExcludes": ["startTime", "endTime"],
+            "extractedDataSubset": {
+              "title": "Reuniao",
+              "date": "{{today+1d}}",
+              "startTime": "18:30",
+              "endTime": "20:00"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "duration_consulta_tomorrow_45_minutes",
+      "turns": [
+        {
+          "content": "Marca me consulta para amanha as 18h30 que dura 45 minutos",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "replyIncludes": ["nota"],
+            "replyExcludes": ["a que horas", "ate que horas"],
+            "missingFieldsIncludes": ["description"],
+            "missingFieldsExcludes": ["startTime", "endTime"],
+            "extractedDataSubset": {
+              "title": "Consulta",
+              "date": "{{today+1d}}",
+              "startTime": "18:30",
+              "endTime": "19:15"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "duration_treino_tomorrow_90_minutes",
+      "turns": [
+        {
+          "content": "Marca me treino para amanha as 18h30 que dura 90 minutos",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "replyIncludes": ["nota"],
+            "replyExcludes": ["a que horas", "ate que horas"],
+            "missingFieldsIncludes": ["description"],
+            "missingFieldsExcludes": ["startTime", "endTime"],
+            "extractedDataSubset": {
+              "title": "Treino",
+              "date": "{{today+1d}}",
+              "startTime": "18:30",
+              "endTime": "20:00"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "duration_jantar_tomorrow_one_hour_and_half_words",
+      "turns": [
+        {
+          "content": "Marca me jantar para amanha as 19h que dura uma hora e meia",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "replyIncludes": ["nota"],
+            "replyExcludes": ["a que horas", "ate que horas"],
+            "missingFieldsIncludes": ["description"],
+            "missingFieldsExcludes": ["startTime", "endTime"],
+            "extractedDataSubset": {
+              "title": "Jantar",
+              "date": "{{today+1d}}",
+              "startTime": "19:00",
+              "endTime": "20:30"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "range_consulta_tomorrow_half_hour_precision",
+      "turns": [
+        {
+          "content": "Marca me consulta para amanha das 18h30 as 19h15",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "replyIncludes": ["nota"],
+            "replyExcludes": ["a que horas", "ate que horas"],
+            "missingFieldsIncludes": ["description"],
+            "missingFieldsExcludes": ["startTime", "endTime"],
+            "extractedDataSubset": {
+              "title": "Consulta",
+              "date": "{{today+1d}}",
+              "startTime": "18:30",
+              "endTime": "19:15"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "today_night_explicit_range_jantar",
+      "turns": [
+        {
+          "content": "Marca me jantar hoje a noite das 20h as 22h",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "replyIncludes": ["nota"],
+            "replyExcludes": ["a que horas", "ate que horas"],
+            "missingFieldsIncludes": ["description"],
+            "missingFieldsExcludes": ["startTime", "endTime"],
+            "extractedDataSubset": {
+              "title": "Jantar",
+              "date": "{{today}}",
+              "startTime": "20:00",
+              "endTime": "22:00"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "today_night_duration_jantar",
+      "turns": [
+        {
+          "content": "Marca me jantar hoje a noite as 20h que dura 2h",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "replyIncludes": ["nota"],
+            "replyExcludes": ["a que horas", "ate que horas"],
+            "missingFieldsIncludes": ["description"],
+            "missingFieldsExcludes": ["startTime", "endTime"],
+            "extractedDataSubset": {
+              "title": "Jantar",
+              "date": "{{today}}",
+              "startTime": "20:00",
+              "endTime": "22:00"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "today_night_time_only_still_requires_end",
+      "turns": [
+        {
+          "content": "Marca me consulta hoje a noite as 18h30",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "replyIncludes": ["ate que horas"],
+            "missingFieldsIncludes": ["endTime"],
+            "extractedDataSubset": {
+              "title": "Consulta",
+              "date": "{{today}}",
+              "startTime": "18:30"
+            },
+            "extractedDataAbsent": ["endTime"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "follow_up_duration_closes_pending_end_time",
+      "turns": [
+        {
+          "content": "Marca me reuniao para amanha as 15h",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": ["endTime"],
+            "extractedDataSubset": {
+              "title": "Reuniao",
+              "date": "{{today+1d}}",
+              "startTime": "15:00"
+            }
+          }
+        },
+        {
+          "content": "dura 1h",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "replyIncludes": ["nota"],
+            "replyExcludes": ["a que horas", "ate que horas"],
+            "missingFieldsIncludes": ["description"],
+            "missingFieldsExcludes": ["startTime", "endTime"],
+            "extractedDataSubset": {
+              "title": "Reuniao",
+              "date": "{{today+1d}}",
+              "startTime": "15:00",
+              "endTime": "16:00"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "follow_up_duration_closes_pending_end_time_half_hour_start",
+      "turns": [
+        {
+          "content": "Marca me consulta para amanha as 18h30",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": ["endTime"],
+            "extractedDataSubset": {
+              "title": "Consulta",
+              "date": "{{today+1d}}",
+              "startTime": "18:30"
+            }
+          }
+        },
+        {
+          "content": "dura 45 minutos",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "replyIncludes": ["nota"],
+            "replyExcludes": ["a que horas", "ate que horas"],
+            "missingFieldsIncludes": ["description"],
+            "missingFieldsExcludes": ["startTime", "endTime"],
+            "extractedDataSubset": {
+              "title": "Consulta",
+              "date": "{{today+1d}}",
+              "startTime": "18:30",
+              "endTime": "19:15"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "duration_with_explicit_skip_description_completes",
+      "turns": [
+        {
+          "content": "Marca me reuniao para amanha as 15h que dura 1h sem descricao",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "missingFieldsExcludes": ["startTime", "endTime", "description"],
+            "extractedDataSubset": {
+              "title": "Reuniao",
+              "date": "{{today+1d}}",
+              "startTime": "15:00",
+              "endTime": "16:00"
+            },
+            "extractedDataAbsent": ["description"]
+          }
+        }
+      ]
+    }
+  ]
+}
