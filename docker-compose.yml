@@ -6,10 +6,16 @@ services:
     build:
       context: .
       dockerfile: discord/Dockerfile
+    env_file:
+      - .env
     environment:
       NODE_ENV: production
       DISCORD_TOKEN: ${DISCORD_TOKEN}
       ORCHESTRATOR_URL: ${ORCHESTRATOR_URL:-http://orchestrator:8000}
+      DASHBOARD_SERVICE_URL: ${DASHBOARD_SERVICE_URL:-http://dashboard-service:8088}
+      DASHBOARD_BASE_URL: ${DASHBOARD_BASE_URL:-http://localhost:8088}
+      DASHBOARD_INTERNAL_API_TOKEN: ${DASHBOARD_INTERNAL_API_TOKEN:-pulse_dashboard_internal_token_change_me}
+      DASHBOARD_CONFIG_CACHE_MS: ${DASHBOARD_CONFIG_CACHE_MS:-3000}
     depends_on:
       orchestrator:
         condition: service_started
