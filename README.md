@@ -59,35 +59,55 @@ Dashboard (Vue + Node)
 
 ## Arranque rápido
 
-1. Copia o ficheiro de exemplo:
+1. Obtém o token do Discord.
+
+Vai a `https://discord.com/developers/applications`, cria uma aplicação, adiciona um bot e, no separador `Bot`, faz `Reset Token` ou `Copy Token`. Ativa também `Message Content Intent`. Guarda esse token para colocares no `.env`.
+
+2. Duplica o ficheiro de exemplo:
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-2. Preenche pelo menos estas variáveis no `.env`:
+3. Preenche pelo menos estas variáveis no `.env`:
 
-- `DISCORD_TOKEN`
-- `DASHBOARD_INTERNAL_API_TOKEN`
-- `CONFIG_ENCRYPTION_KEY`
-- `DEFAULT_ADMIN_EMAIL`
-- `DEFAULT_ADMIN_PASSWORD`
+- `DISCORD_TOKEN`: cola aqui o token do bot Discord.
+- `DASHBOARD_INTERNAL_API_TOKEN`: segredo interno partilhado entre serviços.
+- `CONFIG_ENCRYPTION_KEY`: chave usada para cifrar credenciais de integrações.
+- `DEFAULT_ADMIN_EMAIL`: email da conta admin inicial.
+- `DEFAULT_ADMIN_PASSWORD`: password temporária da conta admin inicial.
 
-3. Sobe a stack:
+Para `DASHBOARD_INTERNAL_API_TOKEN` e `CONFIG_ENCRYPTION_KEY`, usa dois valores longos e diferentes. Em PowerShell, podes gerar cada valor com:
+
+```powershell
+-join ((48..57) + (65..90) + (97..122) | Get-Random -Count 64 | ForEach-Object { [char]$_ })
+```
+
+4. Sobe a stack:
 
 ```powershell
 docker compose up -d --build
 ```
 
-4. Abre a dashboard:
+No primeiro arranque, o `ollama` pode demorar alguns minutos a descarregar o modelo configurado, por defeito `qwen2.5:3b`. É normal veres logs como `Modelo qwen2.5:3b nao encontrado. A fazer pull...` e várias tentativas `retrying` enquanto o download estabiliza. Se ficar preso durante muito tempo em `connection refused`, confirma a ligação à internet, VPN, proxy ou firewall.
+
+5. Abre a dashboard:
 
 ```text
 http://localhost:8088
 ```
 
-5. Entra com `DEFAULT_ADMIN_EMAIL` e `DEFAULT_ADMIN_PASSWORD`.
+6. Entra com `DEFAULT_ADMIN_EMAIL` e `DEFAULT_ADMIN_PASSWORD`.
 
 Na primeira entrada, a password inicial é forçada a mudar para uma nova password escolhida por ti.
+
+7. Liga o Discord à dashboard.
+
+Depois de entrares na dashboard, gera o código de ligação e envia ao bot por DM:
+
+```text
+!code CODIGO
+```
 
 ## Variáveis do `.env`
 
@@ -109,10 +129,10 @@ O `.env.example` já vem alinhado com a stack atual e dividido por grupos:
 - `DEFAULT_ADMIN_EMAIL`: email da conta admin inicial.
 - `DEFAULT_ADMIN_PASSWORD`: password temporária da conta admin inicial.
 
-### Variáveis obrigatórias só se quiseres usar certas integrações
+### Variáveis das integrações opcionais
 
-- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`: ligação Google Calendar
-- `NOTION_CLIENT_ID`, `NOTION_CLIENT_SECRET`, `NOTION_REDIRECT_URI`: ligação Notion
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`: só são necessárias para ativar Google Calendar.
+- `NOTION_CLIENT_ID`, `NOTION_CLIENT_SECRET`, `NOTION_REDIRECT_URI`: só são necessárias para ativar Notion.
 
 ### Variáveis úteis mas opcionais
 
@@ -121,28 +141,9 @@ O `.env.example` já vem alinhado com a stack atual e dividido por grupos:
 - `ORCHESTRATOR_HISTORY_LIMIT`: profundidade do histórico lido pelo orchestrator.
 - `DASHBOARD_CONFIG_CACHE_MS`: cache curta do gateway para a configuração da dashboard.
 
-## Como gerar os segredos internos
+## Integrações opcionais
 
-Para `DASHBOARD_INTERNAL_API_TOKEN` e `CONFIG_ENCRYPTION_KEY`, usa valores longos e aleatórios. Em PowerShell:
-
-```powershell
--join ((48..57) + (65..90) + (97..122) | Get-Random -Count 64 | ForEach-Object { [char]$_ })
-```
-
-Gera dois valores diferentes e coloca um em cada variável.
-
-## Como obter as credenciais
-
-### Discord
-
-1. Vai a `https://discord.com/developers/applications`.
-2. Cria uma nova aplicação.
-3. Entra em `Bot` e adiciona o bot à aplicação.
-4. Em `Bot`, faz `Reset Token` ou `Copy Token` e coloca o valor em `DISCORD_TOKEN`.
-5. Ativa pelo menos `Message Content Intent`.
-6. Adiciona o bot a um servidor teu, ou usa o link de instalação apresentado depois na dashboard.
-
-Sem `DISCORD_TOKEN`, o gateway não arranca.
+Google, Notion e Apple não são necessários para o arranque base. Podes deixar estas credenciais para o fim e configurar só quando quiseres ativar cada integração na dashboard.
 
 ### Google Calendar
 
@@ -225,10 +226,59 @@ Build local dos workspaces:
 npm run build
 ```
 
+## Troubleshooting
+
+### Ollama fica preso a descarregar o modelo
+
+Se `docker compose exec ollama ollama list` mostrar apenas o cabeçalho, ainda não há nenhum modelo instalado:
+
+```text
+NAME    ID    SIZE    MODIFIED
+```
+
+Se o pull ficar muito tempo em `pulling manifest` ou os logs mostrarem erros como `connect: connection refused` para `cloudflarestorage.com`, isola o download do modelo. Para isso, para temporariamente os serviços que usam IA, reinicia o `ollama` e faz o pull manual uma vez:
+
+```powershell
+docker compose stop normalizer-service llm-service extractor-service validator-service orchestrator gateway
+docker compose restart ollama
+docker compose exec ollama ollama pull qwen2.5:3b
+```
+
+Quando terminar com `success`, confirma que o modelo ficou instalado:
+
+```powershell
+docker compose exec ollama ollama list
+```
+
+Deves ver uma linha parecida com:
+
+```text
+NAME          ID              SIZE      MODIFIED
+qwen2.5:3b    ...             1.9 GB    ...
+```
+
+Depois volta a levantar a pipeline:
+
+```powershell
+docker compose start normalizer-service llm-service extractor-service validator-service orchestrator gateway
+```
+
+Se o download continuar a falhar, confirma ligação à internet, VPN, proxy, firewall ou tenta outra rede. Depois de instalado, o modelo fica guardado no volume `ollama-data` e não precisa de ser descarregado em cada arranque.
+
+### Logs antigos depois de resolver
+
+Depois de reiniciar serviços, `docker compose logs` pode continuar a mostrar erros antigos no histórico. Para veres só o estado recente:
+
+```powershell
+docker compose logs --since=1m normalizer-service llm-service extractor-service validator-service orchestrator gateway
+```
+
 ## Notas importantes
 
 - O `.env` real não deve ser versionado.
 - O `.env.example` foi preparado para servir de ponto de partida funcional da stack atual.
+- Com `OLLAMA_AUTO_PULL=true`, `NORMALIZER_AUTO_PULL=true`, `EXTRACTOR_AUTO_PULL=true` e `VALIDATOR_AUTO_PULL=true`, os serviços tentam descarregar automaticamente o modelo local no primeiro arranque. Depois de o modelo existir no volume do `ollama`, os arranques seguintes tendem a ser bem mais rápidos.
 - Os conectores Google e Notion arrancam sem OAuth real, mas só conseguem ligar contas quando preencheres as credenciais certas.
 - A ligação Apple depende do email Apple e da app-specific password introduzidos depois na dashboard.
+- Mensagens de sync em background como `Google Calendar não está ligado` ou `A sincronização Apple está desligada` são esperadas enquanto essas integrações ainda não estiverem configuradas na dashboard.
 - A remoção de utilizadores na dashboard também limpa dados associados, incluindo sessões, ligações e sincronizações registadas.
