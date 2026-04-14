@@ -109,6 +109,20 @@ Depois de entrares na dashboard, gera o código de ligação e envia ao bot por 
 !code CODIGO
 ```
 
+## Modelos Ollama `:cloud`
+
+Se preferires usar modelos Ollama com sufixo `:cloud`, como por exemplo `gpt-oss:120b-cloud` ou `qwen3.5:cloud`, a stack atual já os suporta através do `OLLAMA_BASE_URL` e dos modelos definidos no `.env`.
+
+Mas há uma condição importante: depois de subires os containers, tens de fazer login no Ollama Cloud dentro do container `ollama`.
+
+```powershell
+docker compose exec ollama ollama signin
+```
+
+Este `signin` deve ser feito no container Docker com Ollama, não no utilizador normal da tua máquina, porque os serviços (`llm-service`, `normalizer-service`, `extractor-service` e `validator-service`) falam com o Ollama que está a correr dentro do Docker.
+
+Se não fizeres esse passo, o `docker compose` pode até conseguir fazer `pull` do modelo, mas depois os pedidos reais para `/api/chat` podem falhar com `401 Unauthorized`.
+
 ## Variáveis do `.env`
 
 O `.env.example` já vem alinhado com a stack atual e dividido por grupos:
