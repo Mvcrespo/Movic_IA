@@ -7,6 +7,8 @@ import GetStartedPage from "./pages/GetStartedPage.vue";
 import HomePage from "./pages/HomePage.vue";
 import LoginPage from "./pages/LoginPage.vue";
 import NotFoundPage from "./pages/NotFoundPage.vue";
+import PrivacyPolicyPage from "./pages/PrivacyPolicyPage.vue";
+import TermsOfServicePage from "./pages/TermsOfServicePage.vue";
 import type { FrontendContext } from "./types";
 
 const context = window.__MOVIC_CONTEXT__ as FrontendContext;
@@ -15,6 +17,8 @@ const context = window.__MOVIC_CONTEXT__ as FrontendContext;
 <template>
   <HomePage v-if="context.page === 'home'" v-bind="context.payload" />
   <GetStartedPage v-else-if="context.page === 'get-started'" v-bind="context.payload" />
+  <PrivacyPolicyPage v-else-if="context.page === 'privacy-policy'" v-bind="context.payload" />
+  <TermsOfServicePage v-else-if="context.page === 'terms-of-service'" v-bind="context.payload" />
   <LoginPage v-else-if="context.page === 'login'" v-bind="context.payload" />
   <ChangePasswordPage v-else-if="context.page === 'change-password'" v-bind="context.payload" />
   <DashboardPage v-else-if="context.page === 'dashboard'" v-bind="context.payload" />

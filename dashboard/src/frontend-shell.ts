@@ -5,6 +5,8 @@ import type { ServerResponse } from "node:http";
 export type FrontendPageName =
   | "home"
   | "get-started"
+  | "privacy-policy"
+  | "terms-of-service"
   | "login"
   | "change-password"
   | "dashboard"

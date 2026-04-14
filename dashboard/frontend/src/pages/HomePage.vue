@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import LanguageToggle from "../components/LanguageToggle.vue";
+import SiteFooter from "../components/SiteFooter.vue";
 import { marketingCopy } from "../marketingCopy";
 import { useMarketingLanguage } from "../composables/useMarketingLanguage";
 
@@ -249,5 +250,7 @@ const ctaNote = computed(() =>
         </article>
       </section>
     </main>
+
+    <SiteFooter />
   </div>
 </template>

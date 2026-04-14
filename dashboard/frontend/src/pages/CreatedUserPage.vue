@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import AuthenticatedHeader from "../components/AuthenticatedHeader.vue";
+import SiteFooter from "../components/SiteFooter.vue";
 import type { AppUser } from "../types";
 import { useMarketingLanguage } from "../composables/useMarketingLanguage";
 
@@ -75,5 +76,7 @@ const pageCopy = computed(() =>
         </div>
       </section>
     </main>
+
+    <SiteFooter />
   </div>
 </template>

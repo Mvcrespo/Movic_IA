@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import LanguageToggle from "../components/LanguageToggle.vue";
+import SiteFooter from "../components/SiteFooter.vue";
 import { marketingCopy } from "../marketingCopy";
 import { useMarketingLanguage } from "../composables/useMarketingLanguage";
 
@@ -190,5 +191,7 @@ function submitRequest() {
         </div>
       </section>
     </main>
+
+    <SiteFooter />
   </div>
 </template>

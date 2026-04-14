@@ -107,6 +107,20 @@ export type FrontendContext =
       };
     }
   | {
+      page: "privacy-policy";
+      payload: {
+        contactEmail: string;
+        isAuthenticated: boolean;
+      };
+    }
+  | {
+      page: "terms-of-service";
+      payload: {
+        contactEmail: string;
+        isAuthenticated: boolean;
+      };
+    }
+  | {
       page: "login";
       payload: {
         errorCode: "invalid_credentials" | "inactive" | null;

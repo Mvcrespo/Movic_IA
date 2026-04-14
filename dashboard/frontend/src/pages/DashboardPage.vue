@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import AuthenticatedHeader from "../components/AuthenticatedHeader.vue";
+import SiteFooter from "../components/SiteFooter.vue";
 import { useMarketingLanguage } from "../composables/useMarketingLanguage";
 import type {
   AppUser,
@@ -60,7 +61,10 @@ const i18n = computed(() =>
         title: "Control area",
         body: "Control the bot, the live conversation and external integrations from a clearer and stronger panel.",
         adminRole: "Administrator",
+        adminBadge: "Administrator",
         userRole: "User",
+        role: "Role",
+        administrator: "Administrator",
         tabs: {
           discord: "Discord",
           apple: "Apple Calendar",
@@ -195,7 +199,10 @@ const i18n = computed(() =>
         title: "Área de controlo",
         body: "Controla o bot, a conversa ativa e as integrações externas a partir de um painel mais claro e mais forte.",
         adminRole: "Administrador",
+        adminBadge: "Administrador",
         userRole: "Utilizador",
+        role: "Perfil",
+        administrator: "Administrador",
         tabs: {
           discord: "Discord",
           apple: "Apple Calendar",
@@ -1151,5 +1158,7 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </main>
+
+    <SiteFooter />
   </div>
 </template>

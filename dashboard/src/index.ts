@@ -233,6 +233,36 @@ const server = createServer(async (request, response) => {
       );
     }
 
+    if (method === "GET" && path === "/privacy-policy") {
+      return writeHtml(
+        response,
+        200,
+        renderFrontendPage({
+          title: "Movic | Privacy Policy",
+          page: "privacy-policy",
+          payload: {
+            contactEmail: getMarketingContactEmail(),
+            isAuthenticated: Boolean(currentUser)
+          }
+        })
+      );
+    }
+
+    if (method === "GET" && path === "/terms-of-service") {
+      return writeHtml(
+        response,
+        200,
+        renderFrontendPage({
+          title: "Movic | Terms of Service",
+          page: "terms-of-service",
+          payload: {
+            contactEmail: getMarketingContactEmail(),
+            isAuthenticated: Boolean(currentUser)
+          }
+        })
+      );
+    }
+
     if (method === "GET" && path === "/login") {
       if (currentUser) {
         return redirect(response, currentUser.mustChangePassword ? "/change-password" : "/dashboard");
@@ -1007,7 +1037,7 @@ async function getRuntimeSettingsByLinkCode(code: string): Promise<RuntimeSettin
         link_code,
         link_code_expires_at
       FROM dashboard_runtime_settings
-      WHERE link_code = $1
+      WHERE REGEXP_REPLACE(UPPER(COALESCE(link_code, '')), '[^A-Z0-9]', '', 'g') = $1
       ORDER BY updated_at DESC
       LIMIT 1
     `,
@@ -1776,7 +1806,11 @@ function getAssetContentType(pathname: string): string {
 }
 
 function getMarketingContactEmail(): string {
-  return sanitizeText(env.contactEmail) ?? env.defaultAdminEmail;
+  return (
+    sanitizeText(env.contactEmail) ??
+    sanitizeText(env.defaultAdminEmail) ??
+    "miguelcrespovenancio@hotmail.com"
+  );
 }
 
 async function requireManageableUser(currentUser: AppUser, targetUserId: string | null): Promise<AppUser> {
