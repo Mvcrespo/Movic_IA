@@ -160,6 +160,13 @@ const responseSchema = {
   ]
 };
 
+type OllamaChatMessage = {
+  role: "system" | "user" | "assistant";
+  content: string;
+};
+
+const maxSchemaRepairAttempts = 2;
+
 const server = createServer(async (request, response) => {
   try {
     const method = request.method ?? "GET";
@@ -207,64 +214,127 @@ server.listen(env.port, () => {
 async function validateWithOllama(
   payload: ValidationRequest
 ): Promise<ValidationResponse> {
-  const startedAt = Date.now();
-  const response = await fetch(`${env.ollamaBaseUrl.replace(/\/$/, "")}/api/chat`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json"
-    },
-    body: JSON.stringify({
-      model: env.model,
-      stream: false,
-      keep_alive: env.ollamaKeepAlive,
-      format: responseSchema,
-      options: { num_ctx: 8192 },
-      messages: [
-        {
-          role: "system",
-          content: buildSystemPrompt(payload)
-        },
-        {
-          role: "user",
-          content: JSON.stringify(payload, null, 2)
-        }
-      ]
-    })
+  return requestStructuredJsonFromOllama<ValidationResponse>({
+    model: env.model,
+    schema: responseSchema,
+    parse: safeJsonParse,
+    validate: validateValidationResponse,
+    messages: [
+      {
+        role: "system",
+        content: buildSystemPrompt(payload)
+      },
+      {
+        role: "user",
+        content: JSON.stringify(payload, null, 2)
+      }
+    ]
   });
+}
 
-  if (!response.ok) {
-    if (env.ollamaTimingLogs) {
-      console.log(
-        `[validator-service] Ollama /api/chat falhou em ${Date.now() - startedAt}ms (${response.status} ${response.statusText})`
-      );
+async function requestStructuredJsonFromOllama<T>({
+  model,
+  schema,
+  messages,
+  parse,
+  validate
+}: {
+  model: string;
+  schema: object;
+  messages: OllamaChatMessage[];
+  parse: (value: string) => T | null;
+  validate: (payload: unknown) => void;
+}): Promise<T> {
+  const startedAt = Date.now();
+  const conversation = [...messages];
+
+  for (let attempt = 1; attempt <= maxSchemaRepairAttempts; attempt += 1) {
+    const response = await fetch(`${env.ollamaBaseUrl.replace(/\/$/, "")}/api/chat`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model,
+        stream: false,
+        keep_alive: env.ollamaKeepAlive,
+        format: schema,
+        options: { num_ctx: 8192 },
+        messages: conversation
+      })
+    });
+
+    if (!response.ok) {
+      if (env.ollamaTimingLogs) {
+        console.log(
+          `[validator-service] Ollama /api/chat falhou em ${Date.now() - startedAt}ms (${response.status} ${response.statusText})`
+        );
+      }
+      throw new Error(`Ollama respondeu com ${response.status} ${response.statusText}`);
     }
-    throw new Error(
-      `Ollama respondeu com ${response.status} ${response.statusText}`
-    );
-  }
 
-  const body = (await response.json()) as {
-    message?: {
-      content?: string;
+    const body = (await response.json()) as {
+      message?: {
+        content?: string;
+      };
     };
-  };
 
-  const rawContent = body.message?.content ?? "";
-  const parsed = safeJsonParse(rawContent);
+    const rawContent = body.message?.content ?? "";
+    const parsed = parse(rawContent);
+    let schemaIssue = "";
 
-  if (!parsed || typeof parsed !== "object") {
-    throw new Error(`Resposta JSON invalida do Ollama: ${rawContent}`);
-  }
+    if (!parsed || typeof parsed !== "object") {
+      schemaIssue = "Resposta JSON invalida do Ollama";
+    } else {
+      try {
+        validate(parsed);
+      } catch (error) {
+        schemaIssue = getErrorMessage(error);
+      }
+    }
 
-  validateValidationResponse(parsed);
+    if (!schemaIssue) {
+      if (env.ollamaTimingLogs) {
+        console.log(
+          `[validator-service] Ollama /api/chat concluido em ${Date.now() - startedAt}ms (${attempt}/${maxSchemaRepairAttempts} tentativa(s))`
+        );
+      }
+      return parsed as T;
+    }
 
-  if (env.ollamaTimingLogs) {
-    console.log(
-      `[validator-service] Ollama /api/chat concluido em ${Date.now() - startedAt}ms`
+    if (attempt >= maxSchemaRepairAttempts) {
+      throw new Error(`${schemaIssue}. Resposta do Ollama: ${rawContent}`);
+    }
+
+    console.warn(
+      `[validator-service] Resposta fora do schema na tentativa ${attempt}/${maxSchemaRepairAttempts}: ${schemaIssue}. A repetir pedido ao modelo.`
     );
+
+    conversation.push({
+      role: "assistant",
+      content: rawContent || "(resposta vazia)"
+    });
+    conversation.push({
+      role: "user",
+      content: buildSchemaRepairPrompt(schemaIssue)
+    });
   }
 
-  return parsed;
+  throw new Error("Ollama nao devolveu JSON valido a tempo.");
+}
+
+function buildSchemaRepairPrompt(schemaIssue: string): string {
+  return [
+    "A tua resposta anterior nao respeitou o schema exigido.",
+    `Erro detetado: ${schemaIssue}.`,
+    "Corrige a resposta anterior e devolve novamente o JSON completo.",
+    "Mantem os valores uteis que ja tinhas extraido e garante que todos os campos obrigatorios existem.",
+    "Nao escrevas explicacoes, markdown nem texto fora do JSON."
+  ].join("\n");
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Erro desconhecido";
 }
 
 function buildSystemPrompt(payload: ValidationRequest): string {
