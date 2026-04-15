@@ -91,6 +91,8 @@ docker compose up -d --build
 
 No primeiro arranque, o `ollama` pode demorar alguns minutos a descarregar o modelo configurado, por defeito `qwen2.5:3b`. É normal veres logs como `Modelo qwen2.5:3b nao encontrado. A fazer pull...` e várias tentativas `retrying` enquanto o download estabiliza. Se ficar preso durante muito tempo em `connection refused`, confirma a ligação à internet, VPN, proxy ou firewall.
 
+Se quiseres que o Cloudflare Tunnel arranque automaticamente com o `docker compose`, adiciona também `CLOUDFLARE_TUNNEL_TOKEN` ao teu `.env`. A stack já inclui um serviço `cloudflared` para isso.
+
 5. Abre a dashboard:
 
 ```text
@@ -147,6 +149,7 @@ O `.env.example` já vem alinhado com a stack atual e dividido por grupos:
 
 - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`: só são necessárias para ativar Google Calendar.
 - `NOTION_CLIENT_ID`, `NOTION_CLIENT_SECRET`, `NOTION_REDIRECT_URI`: só são necessárias para ativar Notion.
+- `CLOUDFLARE_TUNNEL_TOKEN`: só é necessária se quiseres arrancar o `cloudflared` no `docker compose`.
 
 ### Variáveis úteis mas opcionais
 
@@ -228,6 +231,12 @@ Ver logs:
 docker compose logs -f
 ```
 
+Ver apenas o túnel Cloudflare:
+
+```powershell
+docker compose logs -f cloudflared
+```
+
 Parar tudo:
 
 ```powershell
@@ -241,6 +250,23 @@ npm run build
 ```
 
 ## Troubleshooting
+
+### Cloudflare Tunnel no Docker
+
+Se antes arrancavas o túnel manualmente com:
+
+```powershell
+"C:\Program Files (x86)\cloudflared\cloudflared.exe" tunnel run movic-tunnel
+```
+
+isso usava a configuração local do `cloudflared` no Windows. Dentro do Docker, a forma mais simples de automatizar é correr o túnel com token:
+
+1. Vai ao painel Cloudflare Zero Trust e copia o token do teu tunnel `movic-tunnel`.
+2. Adiciona `CLOUDFLARE_TUNNEL_TOKEN=...` ao `.env`.
+3. Arranca a stack com `docker compose up -d --build`.
+4. Confirma com `docker compose logs -f cloudflared`.
+
+Se quiseres mesmo correr o túnel por nome, como `tunnel run movic-tunnel`, o container precisa de montar os ficheiros de configuração e credenciais do `cloudflared`, como `config.yml`, `cert.pem` e o ficheiro JSON do tunnel. Neste repositório ficou preparada a versão por token porque é a forma mais simples de manter tudo automático dentro do `docker compose`.
 
 ### Ollama fica preso a descarregar o modelo
 

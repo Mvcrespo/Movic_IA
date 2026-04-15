@@ -51,6 +51,16 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+    command: tunnel --no-autoupdate run
+    depends_on:
+      dashboard-service:
+        condition: service_started
+    restart: unless-stopped
+
   orchestrator:
     image: ghcr.io/mvcrespo/movic-orchestrator:latest
     build:
