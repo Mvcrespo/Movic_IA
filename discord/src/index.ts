@@ -290,8 +290,17 @@ async function handleLinkCodeCommand(message: Message): Promise<void> {
     await sendMessage(
       message.channel,
       result.alreadyLinked
-        ? "Esta conversa já estava ligada. Podes continuar a falar comigo normalmente."
-        : "Ligação concluída com sucesso. Esta conversa ficou associada ao bot e já podes usar os pedidos normais."
+        ? [
+            "Esta conversa já estava ligada.",
+            "Podes continuar a falar comigo normalmente, por exemplo: `Marca reunião amanhã às 11` ou `O que tenho hoje?`",
+            "Se faltar algum detalhe, eu pergunto-te aqui na conversa."
+          ].join("\n")
+        : [
+            "Ligação concluída com sucesso.",
+            "Esta DM ficou associada à tua conta da dashboard e já posso agir sobre a tua agenda a partir daqui.",
+            "Podes escrever diretamente coisas como `Marca reunião amanhã às 11` ou `O que tenho hoje?`",
+            "Se faltar alguma informação, eu faço as perguntas certas para completar o pedido."
+          ].join("\n")
     );
     await addReaction(message, SUCCESS_EMOJI).catch(() => undefined);
   } catch (error) {

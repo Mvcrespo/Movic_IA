@@ -301,6 +301,149 @@
           }
         }
       ]
+    },
+    {
+      "id": "duration_reuniao_with_compact_com_one_hour_thirty_minutes",
+      "turns": [
+        {
+          "content": "Marca me reuniao para amanha as 11 com 1h30min",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "replyIncludes": ["nota"],
+            "replyExcludes": ["a que horas", "ate que horas"],
+            "missingFieldsIncludes": ["description"],
+            "missingFieldsExcludes": ["startTime", "endTime"],
+            "extractedDataSubset": {
+              "title": "Reuniao",
+              "date": "{{today+1d}}",
+              "startTime": "11:00",
+              "endTime": "12:30"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "duration_reuniao_with_compact_com_one_hour_thirty_minutes_long_suffix",
+      "turns": [
+        {
+          "content": "Marca me reuniao para amanha as 11 com 1h30minutos",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "replyIncludes": ["nota"],
+            "replyExcludes": ["a que horas", "ate que horas"],
+            "missingFieldsIncludes": ["description"],
+            "missingFieldsExcludes": ["startTime", "endTime"],
+            "extractedDataSubset": {
+              "title": "Reuniao",
+              "date": "{{today+1d}}",
+              "startTime": "11:00",
+              "endTime": "12:30"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "duration_reuniao_with_compact_com_130_minutes",
+      "turns": [
+        {
+          "content": "Marca me reuniao para amanha as 11 com 130min",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "replyIncludes": ["nota"],
+            "replyExcludes": ["a que horas", "ate que horas"],
+            "missingFieldsIncludes": ["description"],
+            "missingFieldsExcludes": ["startTime", "endTime"],
+            "extractedDataSubset": {
+              "title": "Reuniao",
+              "date": "{{today+1d}}",
+              "startTime": "11:00",
+              "endTime": "13:10"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "follow_up_duration_compact_reply_closes_pending_end_time",
+      "turns": [
+        {
+          "content": "Marca me reuniao para amanha as 11",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": ["endTime"],
+            "extractedDataSubset": {
+              "title": "Reuniao",
+              "date": "{{today+1d}}",
+              "startTime": "11:00"
+            }
+          }
+        },
+        {
+          "content": "1h30",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "replyIncludes": ["nota"],
+            "replyExcludes": ["a que horas", "ate que horas"],
+            "missingFieldsIncludes": ["description"],
+            "missingFieldsExcludes": ["startTime", "endTime"],
+            "extractedDataSubset": {
+              "title": "Reuniao",
+              "date": "{{today+1d}}",
+              "startTime": "11:00",
+              "endTime": "12:30"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "follow_up_duration_minute_reply_closes_pending_end_time",
+      "turns": [
+        {
+          "content": "Marca me reuniao para amanha as 11",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": ["endTime"],
+            "extractedDataSubset": {
+              "title": "Reuniao",
+              "date": "{{today+1d}}",
+              "startTime": "11:00"
+            }
+          }
+        },
+        {
+          "content": "130min",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "replyIncludes": ["nota"],
+            "replyExcludes": ["a que horas", "ate que horas"],
+            "missingFieldsIncludes": ["description"],
+            "missingFieldsExcludes": ["startTime", "endTime"],
+            "extractedDataSubset": {
+              "title": "Reuniao",
+              "date": "{{today+1d}}",
+              "startTime": "11:00",
+              "endTime": "13:10"
+            }
+          }
+        }
+      ]
     }
   ]
 }

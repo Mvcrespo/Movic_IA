@@ -352,6 +352,7 @@ const env = {
   internalApiToken:
     process.env.DASHBOARD_INTERNAL_API_TOKEN ?? "pulse_dashboard_internal_token_change_me",
   historyLimit: Number(process.env.ORCHESTRATOR_HISTORY_LIMIT ?? "12"),
+  contextTtlMs: Number(process.env.ORCHESTRATOR_CONTEXT_TTL_MS ?? `${20 * 60 * 1000}`),
   timezone: process.env.APP_TIMEZONE ?? "Europe/Lisbon",
   timingLogs:
     (process.env.ORCHESTRATOR_TIMING_LOGS ?? "true").toLowerCase() === "true"
@@ -439,7 +440,7 @@ const server = createServer(async (request, response) => {
       }
 
       return sendJson(response, 200, {
-        pending: await getPendingCommandState(channelId)
+        pending: await getPendingCommandState(channelId, new Date())
       });
     }
 
@@ -519,12 +520,61 @@ function validateDebugMessageRequest(payload: DebugMessageRequest): void {
   validateMessagePayload(payload.message);
 }
 
+function resolveReferenceTime(timestamp: string | null | undefined): Date {
+  if (typeof timestamp === "string") {
+    const parsed = new Date(timestamp);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed;
+    }
+  }
+
+  return new Date();
+}
+
+function isTimestampOlderThanWindow(
+  timestamp: string | null | undefined,
+  referenceTime: Date,
+  windowMs: number
+): boolean {
+  if (windowMs <= 0) {
+    return false;
+  }
+
+  if (typeof timestamp !== "string") {
+    return false;
+  }
+
+  const parsed = new Date(timestamp);
+  if (Number.isNaN(parsed.getTime())) {
+    return false;
+  }
+
+  return referenceTime.getTime() - parsed.getTime() > windowMs;
+}
+
+function filterConversationHistoryToRecentWindow(
+  history: ConversationMessage[],
+  referenceTime: Date,
+  windowMs: number
+): ConversationMessage[] {
+  if (windowMs <= 0 || history.length === 0) {
+    return history;
+  }
+
+  const thresholdMs = referenceTime.getTime() - windowMs;
+  return history.filter((message) => {
+    const parsed = new Date(message.timestamp);
+    return !Number.isNaN(parsed.getTime()) && parsed.getTime() >= thresholdMs;
+  });
+}
+
 async function processMessagePayload(
   payload: DiscordMessageInput,
   options: MessageProcessingOptions
 ): Promise<ProcessMessageResult> {
   const processingStartedAt = Date.now();
-  const storedPendingCommand = await getPendingCommandState(payload.channelId);
+  const referenceTime = resolveReferenceTime(payload.timestamp);
+  const storedPendingCommand = await getPendingCommandState(payload.channelId, referenceTime);
   const shouldResetPending =
     options.resetPending ||
     shouldResetPendingForFreshCreateEvent(payload.content, storedPendingCommand) ||
@@ -537,7 +587,11 @@ async function processMessagePayload(
   const pendingCommand = shouldResetPending ? null : storedPendingCommand;
   const fullHistory =
     !shouldResetPending && options.persistConversation
-      ? await getConversationHistory(payload.channelId)
+      ? filterConversationHistoryToRecentWindow(
+          await getConversationHistory(payload.channelId),
+          referenceTime,
+          env.contextTtlMs
+        )
       : [];
 
   const plannerResult = await callLlmServiceWithTrace(
@@ -911,7 +965,7 @@ async function callLlmServiceWithTrace(
   // Quando existe um comando pendente, limitar o historico aos ultimos 4 turnos (2 user + 2 assistant)
   // para nao confundir o LLM com contexto anterior ao inicio do fluxo de marcacao.
   const history = pendingCommand ? fullHistory.slice(-4) : fullHistory;
-  const now = getTimeContext();
+  const now = getTimeContext(resolveReferenceTime(message.timestamp));
   const normalizationStartedAt = Date.now();
   const normalization = await callNormalizerService(message.content, now);
   const normalizationMs = Date.now() - normalizationStartedAt;
@@ -945,6 +999,10 @@ async function callLlmServiceWithTrace(
     extractExplicitDateFromMessage(message.content, currentYear) ??
     extractWrittenDateFromMessage(message.content, currentYear) ??
     extractRelativeMonthDateFromMessage(message.content, todayForDate);
+  const weekAnchorOverride = resolveRelativeWeekAnchorDateFromMessage(
+    message.content,
+    now.currentDate
+  );
   const explicitDateRangeOverride = resolveDeterministicDateRangeFromMessage(
     message.content,
     now.currentDate
@@ -1027,6 +1085,21 @@ async function callLlmServiceWithTrace(
         (f) => f !== "date" && f !== "rawDate"
       );
     }
+  }
+
+  if (
+    interpretation.command === "create_event" &&
+    !hasNonEmptyValue(interpretation.extractedData?.date) &&
+    weekAnchorOverride
+  ) {
+    interpretation.extractedData = {
+      ...interpretation.extractedData,
+      date: weekAnchorOverride.date,
+      rawDate: weekAnchorOverride.raw
+    };
+    interpretation.missingFields = (interpretation.missingFields ?? []).filter(
+      (f) => f !== "date" && f !== "rawDate"
+    );
   }
 
   // Override: se a mensagem tem um dia da semana resolvido localmente, usar SEMPRE essa data.
@@ -1292,7 +1365,7 @@ function shouldResetPendingForFreshCreateEvent(
   messageContent: string,
   pendingCommand: PendingCommand | null
 ): boolean {
-  if (!pendingCommand || pendingCommand.command !== "create_event") {
+  if (!pendingCommand) {
     return false;
   }
 
@@ -1301,6 +1374,10 @@ function shouldResetPendingForFreshCreateEvent(
 
   if (!startsFreshCreateFlow) {
     return false;
+  }
+
+  if (pendingCommand.command !== "create_event") {
+    return true;
   }
 
   const timeData = extractTimeData(normalized);
@@ -1324,11 +1401,16 @@ function shouldResetPendingForFreshUpdateEvent(
   messageContent: string,
   pendingCommand: PendingCommand | null
 ): boolean {
-  if (!pendingCommand || pendingCommand.command !== "update_event") {
+  if (!pendingCommand) {
     return false;
   }
 
-  return looksLikeUpdateEventIntent(messageContent);
+  const startsFreshUpdateFlow = looksLikeUpdateEventIntent(messageContent);
+  if (!startsFreshUpdateFlow) {
+    return false;
+  }
+
+  return true;
 }
 
 function shouldUseCreateEventMultiAgent(
@@ -1780,7 +1862,7 @@ function seedAgentInterpretationFromPlanner(
 }
 
 async function buildMultiAgentContext(message: DiscordMessageInput): Promise<MultiAgentContext> {
-  const now = getTimeContext();
+  const now = getTimeContext(resolveReferenceTime(message.timestamp));
   const normalization = await callNormalizerService(message.content, now);
   const temporalHints = resolveTemporalHintsFromExpressions(
     normalization.temporalExpressions,
@@ -2387,7 +2469,7 @@ function shouldHandleAdvancedCreateEvent(
     return false;
   }
 
-  const currentDate = getTimeContext().currentDate;
+  const currentDate = getTimeContext(resolveReferenceTime(message.timestamp)).currentDate;
   if (extractWeeklyRecurrenceFromMessage(message.content, currentDate)) {
     return true;
   }
@@ -2408,7 +2490,7 @@ function resolveAdvancedCreateEventInterpretation(
     return resolvePendingRecurringCreateReply(message.content, interpretation, pending);
   }
 
-  const currentDate = getTimeContext().currentDate;
+  const currentDate = getTimeContext(resolveReferenceTime(message.timestamp)).currentDate;
   const recurring = extractWeeklyRecurrenceFromMessage(message.content, currentDate);
   if (recurring) {
     return buildRecurringCreateInterpretation(
@@ -6235,12 +6317,17 @@ function applyPendingFieldAnswerHeuristics(
   }
 
   if (pending.missingFields.includes("endTime") && !hasNonEmptyValue(extractedData.endTime)) {
+    const standaloneDurationMinutes = extractStandaloneDurationMinutes(trimmedContent);
     const currentStartTime =
-      normalizeClockTimeValue(extractedData.startTime) ??
-      normalizeClockTimeValue(extractedData.time) ??
-      normalizeClockTimeValue(pending.extractedData?.startTime) ??
-      normalizeClockTimeValue(pending.extractedData?.time);
-    const explicitDurationMinutes = extractExplicitDurationMinutes(trimmedContent);
+      (standaloneDurationMinutes !== null
+        ? normalizeClockTimeValue(pending.extractedData?.startTime) ??
+          normalizeClockTimeValue(pending.extractedData?.time)
+        : normalizeClockTimeValue(extractedData.startTime) ??
+          normalizeClockTimeValue(extractedData.time) ??
+          normalizeClockTimeValue(pending.extractedData?.startTime) ??
+          normalizeClockTimeValue(pending.extractedData?.time));
+    const explicitDurationMinutes =
+      extractExplicitDurationMinutes(trimmedContent) ?? standaloneDurationMinutes;
     const durationBasedEndTime =
       currentStartTime && explicitDurationMinutes !== null
         ? addMinutesToClockTime(currentStartTime, explicitDurationMinutes)
@@ -6262,7 +6349,9 @@ function applyPendingFieldAnswerHeuristics(
     pending.missingFields.includes("description") &&
     !hasNonEmptyValue(extractedData.description)
   ) {
-    const explicitDurationMinutes = extractExplicitDurationMinutes(trimmedContent);
+    const explicitDurationMinutes =
+      extractExplicitDurationMinutes(trimmedContent) ??
+      extractStandaloneDurationMinutes(trimmedContent);
     if (isDescriptionSkipReply(trimmedContent)) {
       nextCommand = "create_event";
       nextHasCommand = true;
@@ -6680,6 +6769,8 @@ function mergeExtractedData(
     false;
   const expectingEndTime = previousMissingFields?.includes("endTime") || false;
   const standaloneTimeReply = isLikelyStandaloneTimeReply(latestMessage);
+  const standaloneDurationReply =
+    expectingEndTime ? extractStandaloneDurationMinutes(latestMessage) : null;
 
   for (const [key, value] of Object.entries(current)) {
     if (key === "__titleInferred" && affirmativeTitleConfirmation) {
@@ -6733,7 +6824,7 @@ function mergeExtractedData(
     standaloneTimeReply && expectingStartTime && currentHasStartTime;
   const allowStandaloneEndTime =
     standaloneTimeReply && expectingEndTime && currentHasEndTime;
-  if (timeData.startTime) {
+  if (timeData.startTime && standaloneDurationReply === null) {
     merged.startTime = timeData.startTime;
     merged.time = timeData.startTime;
   } else if (allowStandaloneStartTime && normalizedCurrentStartTime) {
@@ -6763,6 +6854,14 @@ function mergeExtractedData(
   } else if (allowStandaloneEndTime && normalizedCurrentEndTime) {
     merged.endTime = normalizedCurrentEndTime;
     merged.rawTime = latestMessage.trim();
+  } else if (
+    standaloneDurationReply !== null &&
+    typeof merged.startTime === "string"
+  ) {
+    const derivedEndTime = addMinutesToClockTime(merged.startTime, standaloneDurationReply);
+    if (derivedEndTime) {
+      merged.endTime = derivedEndTime;
+    }
   } else if (!hasNonEmptyValue(previous.endTime)) {
     delete merged.endTime;
   }
@@ -7066,22 +7165,6 @@ function extractTimeData(text: string): {
     };
   }
 
-  // hora simples com minutos: "Ã s 11:30" / "11h30"
-  const singleMatch = normalized.match(/\b(?:as\s*)?(\d{1,2})[:h](\d{2})\s*(?:h)?\b/u);
-  if (singleMatch) {
-    const startTime = `${singleMatch[1].padStart(2, "0")}:${singleMatch[2]}`;
-    const explicitDurationMinutes = extractExplicitDurationMinutes(normalized);
-    const derivedEndTime =
-      explicitDurationMinutes !== null
-        ? addMinutesToClockTime(startTime, explicitDurationMinutes)
-        : null;
-    return {
-      startTime,
-      ...(derivedEndTime ? { endTime: derivedEndTime } : {}),
-      rawTime: singleMatch[0]
-    };
-  }
-
   // hora simples sem minutos: "as 8" / "as 15" â†’ startTime (0-23)
   const singleHourMatch = normalized.match(/\bas\s+(\d{1,2})\b(?![\s:h]\d)/u);
   if (singleHourMatch) {
@@ -7120,6 +7203,22 @@ function extractTimeData(text: string): {
     }
   }
 
+  // hora simples com minutos: "Ã s 11:30" / "11h30"
+  const singleMatch = normalized.match(/\b(?:as\s*)?(\d{1,2})[:h](\d{2})\s*(?:h)?\b/u);
+  if (singleMatch) {
+    const startTime = `${singleMatch[1].padStart(2, "0")}:${singleMatch[2]}`;
+    const explicitDurationMinutes = extractExplicitDurationMinutes(normalized);
+    const derivedEndTime =
+      explicitDurationMinutes !== null
+        ? addMinutesToClockTime(startTime, explicitDurationMinutes)
+        : null;
+    return {
+      startTime,
+      ...(derivedEndTime ? { endTime: derivedEndTime } : {}),
+      rawTime: singleMatch[0]
+    };
+  }
+
   return {};
 }
 
@@ -7129,53 +7228,95 @@ function extractExplicitDurationMinutes(text: string): number | null {
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
 
-  if (!/\b(?:dura|durar|duracao|durante)\b/u.test(normalized)) {
+  const durationCandidates = [
+    ...collectAnchoredDurationCandidates(
+      normalized,
+      /\b(?:dura|durante|com\s+duracao\s+de|duracao\s+de|que\s+dura)\b([^.!?\n]{0,40})/gu
+    ),
+    ...collectAnchoredDurationCandidates(
+      normalized,
+      /\b(?:as|das)\s+\d{1,2}(?:(?::\d{2})|h(?:\d{0,2})?)?\b[^.!?\n]{0,24}?\b(?:com|por)\b([^.!?\n]{0,25})/gu
+    ),
+    ...collectAnchoredDurationCandidates(
+      normalized,
+      /\b(?:as|das)\s+\d{1,2}(?:(?::\d{2})|h(?:\d{0,2})?)?\b([^.!?\n]{0,20})/gu
+    )
+  ];
+
+  for (const candidate of durationCandidates) {
+    const parsed = parseDurationExpressionToMinutes(candidate);
+    if (parsed !== null) {
+      return parsed;
+    }
+  }
+
+  return null;
+}
+
+function extractStandaloneDurationMinutes(text: string): number | null {
+  const normalized = normalizeLooseText(text)
+    .replace(
+      /^(?:e\s+)?(?:com|por|dur(?:a|ar|ante)?|duracao(?:\s+de)?|que\s+dura|vai\s+ser\s+de)\s+/u,
+      ""
+    )
+    .trim();
+
+  return parseDurationExpressionToMinutes(normalized);
+}
+
+function collectAnchoredDurationCandidates(text: string, pattern: RegExp): string[] {
+  const candidates: string[] = [];
+  for (const match of text.matchAll(pattern)) {
+    const candidate = match[1]?.trim();
+    if (candidate) {
+      candidates.push(candidate);
+    }
+  }
+
+  return candidates;
+}
+
+function parseDurationExpressionToMinutes(value: string): number | null {
+  const normalized = normalizeLooseText(value)
+    .replace(/^[,:;.\s-]+|[,:;.\s-]+$/gu, "")
+    .replace(/\b(?:de|duracao)\s+/gu, "")
+    .trim();
+
+  if (!normalized) {
     return null;
   }
 
+  if (/^(?:uma|1)\s+hora\s+e\s+meia$/u.test(normalized)) {
+    return 90;
+  }
+
+  if (/^meia\s+hora$/u.test(normalized)) {
+    return 30;
+  }
+
   const compactHourMinuteMatch = normalized.match(
-    /\b(?:dura|durante|com\s+duracao\s+de|duracao\s+de|que\s+dura)\b.{0,20}?\b(\d{1,2})h(\d{1,2})\b/u
+    /^(\d{1,2})\s*h\s*(\d{1,2})\s*(?:m|min|mins|minuto|minutos)?$/u
   );
   if (compactHourMinuteMatch) {
     const hours = Number.parseInt(compactHourMinuteMatch[1], 10);
     const minutes = Number.parseInt(compactHourMinuteMatch[2], 10);
-    if (
-      Number.isFinite(hours) &&
-      Number.isFinite(minutes) &&
-      hours >= 0 &&
-      minutes >= 0 &&
-      minutes < 60
-    ) {
-      const total = hours * 60 + minutes;
-      if (total > 0) {
-        return total;
-      }
+    if (hours >= 0 && minutes >= 0 && minutes < 60) {
+      return hours * 60 + minutes;
     }
   }
 
-  const hourMinuteMatch = normalized.match(
-    /\b(?:dura|durante|com\s+duracao\s+de|duracao\s+de|que\s+dura)\b.{0,20}?\b(\d{1,2})\s*h(?:oras?)?(?:\s*e\s*(\d{1,2})\s*(?:m|min|mins|minutos?))?\b/u
+  const hourMinuteWordsMatch = normalized.match(
+    /^(\d{1,2})\s*(?:hora|horas)(?:\s+e\s+(\d{1,2})\s*(?:m|min|mins|minuto|minutos))$/u
   );
-  if (hourMinuteMatch) {
-    const hours = Number.parseInt(hourMinuteMatch[1], 10);
-    const minutes = hourMinuteMatch[2] ? Number.parseInt(hourMinuteMatch[2], 10) : 0;
-    if (
-      Number.isFinite(hours) &&
-      Number.isFinite(minutes) &&
-      hours >= 0 &&
-      minutes >= 0 &&
-      minutes < 60
-    ) {
-      const total = hours * 60 + minutes;
-      if (total > 0) {
-        return total;
-      }
+  if (hourMinuteWordsMatch) {
+    const hours = Number.parseInt(hourMinuteWordsMatch[1], 10);
+    const minutes = Number.parseInt(hourMinuteWordsMatch[2], 10);
+    if (hours >= 0 && minutes >= 0 && minutes < 60) {
+      return hours * 60 + minutes;
     }
   }
 
-  const minuteOnlyMatch = normalized.match(
-    /\b(?:dura|durante|com\s+duracao\s+de|duracao\s+de|que\s+dura)\b.{0,20}?\b(\d{1,3})\s*(?:m|min|mins|minuto|minutos)\b/u
-  );
+  const minuteOnlyMatch = normalized.match(/^(\d{1,3})\s*(?:m|min|mins|minuto|minutos)$/u);
   if (minuteOnlyMatch) {
     const minutes = Number.parseInt(minuteOnlyMatch[1], 10);
     if (Number.isFinite(minutes) && minutes > 0) {
@@ -7183,28 +7324,16 @@ function extractExplicitDurationMinutes(text: string): number | null {
     }
   }
 
-  if (
-    /\b(?:dura|durante|com\s+duracao\s+de|duracao\s+de|que\s+dura)\b.{0,20}?\buma\s+hora\s+e\s+meia\b/u.test(
-      normalized
-    )
-  ) {
-    return 90;
-  }
-
-  if (
-    /\b(?:dura|durante|com\s+duracao\s+de|duracao\s+de|que\s+dura)\b.{0,20}?\b(?:uma|1)\s+hora\b/u.test(
-      normalized
-    )
-  ) {
+  if (/^(?:uma|1)\s+hora$/u.test(normalized)) {
     return 60;
   }
 
-  if (
-    /\b(?:dura|durante|com\s+duracao\s+de|duracao\s+de|que\s+dura)\b.{0,20}?\bmeia\s+hora\b/u.test(
-      normalized
-    )
-  ) {
-    return 30;
+  const hourOnlyMatch = normalized.match(/^(\d{1,2})\s*(?:h|hora|horas)$/u);
+  if (hourOnlyMatch) {
+    const hours = Number.parseInt(hourOnlyMatch[1], 10);
+    if (Number.isFinite(hours) && hours > 0) {
+      return hours * 60;
+    }
   }
 
   return null;
@@ -8146,9 +8275,20 @@ function extractWeekdayHintFromMessage(text: string, today: Date): TemporalHint 
     sabado: 6,
     domingo: 0
   };
+  const explicitWeekAnchor = extractWeekAnchorFromNormalizedText(normalized, today);
 
   for (const [name, dayNum] of Object.entries(weekdayMap)) {
     if (new RegExp(`\\b${name}(?:-feira)?\\b`, "u").test(normalized)) {
+      if (explicitWeekAnchor) {
+        const date = resolveWeekdayFromAnchor(explicitWeekAnchor, name);
+        return {
+          expression: name,
+          type: "weekday",
+          date: formatIsoDate(date),
+          label: formatIsoDate(date)
+        };
+      }
+
       const currentDay = today.getUTCDay();
       const originalDiff = dayNum - currentDay; // guardar antes do ajuste base
       let diff = originalDiff;
@@ -8175,6 +8315,27 @@ function extractWeekdayHintFromMessage(text: string, today: Date): TemporalHint 
       };
     }
   }
+  return null;
+}
+
+function extractWeekAnchorFromNormalizedText(text: string, today: Date): Date | null {
+  const numericMatch = text.match(/\bdaqui\s+a\s+(\d+)\s+semanas?\b/u);
+  if (numericMatch) {
+    return addDays(today, Number(numericMatch[1]) * 7);
+  }
+
+  if (/\bdaqui\s+a\s+uma\s+semana\b/u.test(text)) {
+    return addDays(today, 7);
+  }
+
+  if (/\b(?:para\s+a|na)\s+proxima\s+semana\b|\bsemana\s+que\s+vem\b/u.test(text)) {
+    return getWeekRange(today, 1).start;
+  }
+
+  if (/\besta\s+semana\b/u.test(text)) {
+    return getWeekRange(today, 0).start;
+  }
+
   return null;
 }
 
@@ -8645,7 +8806,10 @@ async function updatePendingCommand(
   }
 }
 
-async function getPendingCommandState(channelId: string): Promise<PendingCommand | null> {
+async function getPendingCommandState(
+  channelId: string,
+  referenceTime: Date = new Date()
+): Promise<PendingCommand | null> {
   const result = await pool.query(
     `
       SELECT
@@ -8667,7 +8831,7 @@ async function getPendingCommandState(channelId: string): Promise<PendingCommand
     return null;
   }
 
-  return {
+  const pending = {
     command: row.command as PendingCommand["command"],
     extractedData: row.extracted_data as Record<string, unknown>,
     missingFields: Array.isArray(row.missing_fields)
@@ -8677,6 +8841,13 @@ async function getPendingCommandState(channelId: string): Promise<PendingCommand
     followUpQuestion: row.follow_up_question as string,
     updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : String(row.updated_at)
   };
+
+  if (isTimestampOlderThanWindow(pending.updatedAt, referenceTime, env.contextTtlMs)) {
+    await clearPendingCommand(channelId);
+    return null;
+  }
+
+  return pending;
 }
 
 function buildMissingDataQuestion(interpretation: LlmInterpretation): string {
@@ -8900,8 +9071,17 @@ function getTimeContext(): {
   currentDateTime: string;
   currentDate: string;
   currentTime: string;
+}
+function getTimeContext(referenceTime: Date): {
+  currentDateTime: string;
+  currentDate: string;
+  currentTime: string;
+}
+function getTimeContext(referenceTime = new Date()): {
+  currentDateTime: string;
+  currentDate: string;
+  currentTime: string;
 } {
-  const now = new Date();
   const formatter = new Intl.DateTimeFormat("sv-SE", {
     timeZone: env.timezone,
     year: "numeric",
@@ -8913,7 +9093,7 @@ function getTimeContext(): {
     hour12: false
   });
 
-  const parts = formatter.formatToParts(now);
+  const parts = formatter.formatToParts(referenceTime);
   const getPart = (type: string): string => {
     return parts.find((part) => part.type === type)?.value ?? "00";
   };
@@ -9312,6 +9492,11 @@ function resolveDeterministicDateFromMessage(
     };
   }
 
+  const relativeWeekAnchor = resolveRelativeWeekAnchorDateFromMessage(text, currentDate);
+  if (relativeWeekAnchor) {
+    return relativeWeekAnchor;
+  }
+
   const normalizedText = text
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -9328,6 +9513,54 @@ function resolveDeterministicDateFromMessage(
   }
   if (/\bontem\b/u.test(normalizedText)) {
     return { date: formatIsoDate(addDays(today, -1)), raw: "ontem" };
+  }
+
+  return null;
+}
+
+function resolveRelativeWeekAnchorDateFromMessage(
+  text: string,
+  currentDate: string
+): { date: string; raw: string } | null {
+  const normalized = normalizeLooseText(text);
+  const today = parseIsoDate(currentDate);
+
+  if (/\b(?:para\s+a|na)\s+proxima\s+semana\b|\bsemana\s+que\s+vem\b/u.test(normalized)) {
+    return {
+      date: formatIsoDate(getWeekRange(today, 1).start),
+      raw: "proxima semana"
+    };
+  }
+
+  if (/\bpara\s+a\s+semana\b/u.test(normalized)) {
+    return {
+      date: formatIsoDate(getWeekRange(today, 1).start),
+      raw: "para a semana"
+    };
+  }
+
+  if (/\besta\s+semana\b/u.test(normalized)) {
+    return {
+      date: formatIsoDate(getWeekRange(today, 0).start),
+      raw: "esta semana"
+    };
+  }
+
+  const numericMatch = normalized.match(/\bdaqui\s+a\s+(\d+)\s+semanas?\b/u);
+  if (numericMatch) {
+    const anchor = addDays(today, Number(numericMatch[1]) * 7);
+    return {
+      date: formatIsoDate(getWeekRange(anchor, 0).start),
+      raw: numericMatch[0]
+    };
+  }
+
+  if (/\bdaqui\s+a\s+uma\s+semana\b/u.test(normalized)) {
+    const anchor = addDays(today, 7);
+    return {
+      date: formatIsoDate(getWeekRange(anchor, 0).start),
+      raw: "daqui a uma semana"
+    };
   }
 
   return null;
@@ -9817,6 +10050,10 @@ function isAuthorizedInternalRequest(request: IncomingMessage): boolean {
 function validateEnv(): void {
   if (Number.isNaN(env.port) || env.port < 1 || env.port > 65535) {
     throw new Error("ORCHESTRATOR_PORT deve ser um numero valido.");
+  }
+
+  if (!Number.isFinite(env.contextTtlMs) || env.contextTtlMs < 0) {
+    throw new Error("ORCHESTRATOR_CONTEXT_TTL_MS deve ser um numero valido.");
   }
 
   if (!env.postgresUrl) {

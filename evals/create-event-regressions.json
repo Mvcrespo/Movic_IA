@@ -3322,6 +3322,113 @@
           }
         }
       ]
+    },
+    {
+      "id": "fresh_create_interrupt_resets_previous_pending",
+      "turns": [
+        {
+          "content": "Marca me reuniao para amanha as 11",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "endTime"
+            ],
+            "extractedDataSubset": {
+              "title": "Reuniao",
+              "date": "{{today+1d}}",
+              "startTime": "11:00"
+            }
+          }
+        },
+        {
+          "content": "Quero marcar um almoco amanha as 13",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "tracePendingReset": true,
+            "missingFieldsIncludes": [
+              "endTime"
+            ],
+            "missingFieldsExcludes": [
+              "description"
+            ],
+            "extractedDataSubset": {
+              "title": "Almoco",
+              "date": "{{today+1d}}",
+              "startTime": "13:00"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "pending_context_expires_after_twenty_minutes",
+      "turns": [
+        {
+          "content": "Marca me reuniao para amanha as 11",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "endTime"
+            ]
+          }
+        },
+        {
+          "content": "saltar",
+          "timestampOffsetMinutes": 25,
+          "expect": {
+            "needsCalendarAction": false,
+            "tracePendingBeforePresent": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "reuniao_next_week_wednesday_hour_only_requires_end",
+      "turns": [
+        {
+          "content": "Marca me reuniao para a proxima semana na quarta as 11",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "endTime"
+            ],
+            "extractedDataSubset": {
+              "title": "Reuniao",
+              "date": "{{nextWeekStart+2d}}",
+              "startTime": "11:00"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "reuniao_two_weeks_friday_hour_only_requires_end",
+      "turns": [
+        {
+          "content": "Marca me reuniao daqui a 2 semanas na sexta as 11",
+          "expect": {
+            "command": "create_event",
+            "isComplete": false,
+            "shouldAskFollowUp": true,
+            "missingFieldsIncludes": [
+              "endTime"
+            ],
+            "extractedDataSubset": {
+              "title": "Reuniao",
+              "date": "{{anchoredWeekday:sexta:2}}",
+              "startTime": "11:00"
+            }
+          }
+        }
+      ]
     }
   ]
 }
