@@ -1482,7 +1482,7 @@ async function buildCreateEventInterpretationWithAgentsDetailed(
     extraction.extractedData,
     validation.extractedData,
     validation.missingFields,
-    message.content
+    agentContext.normalization.correctedText.trim() || message.content
   );
   const deterministicDateOverride = resolveDeterministicDateFromMessage(
     message.content,
@@ -2250,10 +2250,10 @@ function normalizeInterpretation(
     mergeExtractedData(
       pending?.extractedData ?? {},
       interpretation.extractedData,
-      message.content,
+      intentSourceText,
       pending?.missingFields
     ),
-    message.content,
+    intentSourceText,
     pending
   );
 
@@ -2273,7 +2273,7 @@ function normalizeInterpretation(
   };
 
   normalized = applyPendingFieldAnswerHeuristics(message, normalized, pending);
-  normalized = stripUnsupportedFreshTitle(message.content, normalized, pending);
+  normalized = stripUnsupportedFreshTitle(intentSourceText, normalized, pending);
   const createIntentDetected = detectCreateEventIntent(
     message.content,
     normalizedMessageContent
@@ -6815,6 +6815,7 @@ function mergeExtractedData(
   }
 
   const timeData = extractTimeData(latestMessage);
+  const explicitDurationMinutes = extractExplicitDurationMinutes(latestMessage);
   const normalizedCurrentStartTime = normalizeClockTimeValue(current.startTime);
   const normalizedCurrentEndTime = normalizeClockTimeValue(current.endTime);
   const currentHasStartTime = Boolean(normalizedCurrentStartTime);
@@ -6824,6 +6825,15 @@ function mergeExtractedData(
     standaloneTimeReply && expectingStartTime && currentHasStartTime;
   const allowStandaloneEndTime =
     standaloneTimeReply && expectingEndTime && currentHasEndTime;
+  const currentStartTimeContext =
+    normalizeClockTimeValue(merged.startTime) ??
+    normalizeClockTimeValue(merged.time) ??
+    normalizeClockTimeValue(previous.startTime) ??
+    normalizeClockTimeValue(previous.time);
+  const keepCurrentDerivedEndTime =
+    explicitDurationMinutes !== null &&
+    currentHasEndTime &&
+    Boolean(currentStartTimeContext);
   if (timeData.startTime && standaloneDurationReply === null) {
     merged.startTime = timeData.startTime;
     merged.time = timeData.startTime;
@@ -6854,6 +6864,8 @@ function mergeExtractedData(
   } else if (allowStandaloneEndTime && normalizedCurrentEndTime) {
     merged.endTime = normalizedCurrentEndTime;
     merged.rawTime = latestMessage.trim();
+  } else if (keepCurrentDerivedEndTime && normalizedCurrentEndTime) {
+    merged.endTime = normalizedCurrentEndTime;
   } else if (
     standaloneDurationReply !== null &&
     typeof merged.startTime === "string"
@@ -6959,6 +6971,7 @@ function sanitizeTimeFieldsFromCurrentTurn(
 ): Record<string, unknown> {
   const sanitized = { ...extractedData };
   const timeDataFromMessage = extractTimeData(latestMessage);
+  const explicitDurationMinutes = extractExplicitDurationMinutes(latestMessage);
   const standaloneTimeReply = isLikelyStandaloneTimeReply(latestMessage);
   const replyingWithStartTime =
     standaloneTimeReply &&
@@ -6970,6 +6983,14 @@ function sanitizeTimeFieldsFromCurrentTurn(
     standaloneTimeReply && Boolean(pending?.missingFields?.includes("endTime"));
   const previousStartTime = pending?.extractedData?.startTime;
   const previousEndTime = pending?.extractedData?.endTime;
+  const currentStartTime =
+    normalizeClockTimeValue(sanitized.startTime) ??
+    normalizeClockTimeValue(sanitized.time) ??
+    normalizeClockTimeValue(previousStartTime);
+  const keepDurationDerivedEndTime =
+    explicitDurationMinutes !== null &&
+    hasNonEmptyValue(sanitized.endTime) &&
+    Boolean(currentStartTime);
 
   if (
     hasNonEmptyValue(sanitized.startTime) &&
@@ -6990,6 +7011,7 @@ function sanitizeTimeFieldsFromCurrentTurn(
     hasNonEmptyValue(sanitized.endTime) &&
     !timeDataFromMessage.endTime &&
     !replyingWithEndTime &&
+    !keepDurationDerivedEndTime &&
     !hasNonEmptyValue(previousEndTime)
   ) {
     delete sanitized.endTime;
@@ -7008,9 +7030,9 @@ function extractTimeData(text: string): {
   rawTime?: string;
 } {
   const normalized = text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/gu, "")
     .toLowerCase()
-    .replace(/Ã s/gu, "as")
-    .replace(/atÃ©/gu, "ate")
     .replace(/\bao\s+(\d)/gu, "as $1")
     .replace(/\bo\s+(\d{1,2}:\d{2})\b/gu, "$1");
 
@@ -7231,7 +7253,7 @@ function extractExplicitDurationMinutes(text: string): number | null {
   const durationCandidates = [
     ...collectAnchoredDurationCandidates(
       normalized,
-      /\b(?:dura|durante|com\s+duracao\s+de|duracao\s+de|que\s+dura)\b([^.!?\n]{0,40})/gu
+      /\b(?:dur(?:a|ar|ante)|com\s+duracao\s+de|duracao\s+de|que\s+dura)\b([^.!?\n]{0,40})/gu
     ),
     ...collectAnchoredDurationCandidates(
       normalized,
@@ -7286,16 +7308,16 @@ function parseDurationExpressionToMinutes(value: string): number | null {
     return null;
   }
 
-  if (/^(?:uma|1)\s+hora\s+e\s+meia$/u.test(normalized)) {
+  if (/^(?:uma|1)\s+hora\s+e\s+meia(?:\b|$)/u.test(normalized)) {
     return 90;
   }
 
-  if (/^meia\s+hora$/u.test(normalized)) {
+  if (/^meia\s+hora(?:\b|$)/u.test(normalized)) {
     return 30;
   }
 
   const compactHourMinuteMatch = normalized.match(
-    /^(\d{1,2})\s*h\s*(\d{1,2})\s*(?:m|min|mins|minuto|minutos)?$/u
+    /^(\d{1,2})\s*h\s*(\d{1,2})\s*(?:m|min|mins|minuto|minutos)?(?:\b|$)/u
   );
   if (compactHourMinuteMatch) {
     const hours = Number.parseInt(compactHourMinuteMatch[1], 10);
@@ -7306,7 +7328,7 @@ function parseDurationExpressionToMinutes(value: string): number | null {
   }
 
   const hourMinuteWordsMatch = normalized.match(
-    /^(\d{1,2})\s*(?:hora|horas)(?:\s+e\s+(\d{1,2})\s*(?:m|min|mins|minuto|minutos))$/u
+    /^(\d{1,2})\s*(?:hora|horas)(?:\s+e\s+(\d{1,2})\s*(?:m|min|mins|minuto|minutos))(?:\b|$)/u
   );
   if (hourMinuteWordsMatch) {
     const hours = Number.parseInt(hourMinuteWordsMatch[1], 10);
@@ -7316,7 +7338,9 @@ function parseDurationExpressionToMinutes(value: string): number | null {
     }
   }
 
-  const minuteOnlyMatch = normalized.match(/^(\d{1,3})\s*(?:m|min|mins|minuto|minutos)$/u);
+  const minuteOnlyMatch = normalized.match(
+    /^(\d{1,3})\s*(?:m|min|mins|minuto|minutos)(?:\b|$)/u
+  );
   if (minuteOnlyMatch) {
     const minutes = Number.parseInt(minuteOnlyMatch[1], 10);
     if (Number.isFinite(minutes) && minutes > 0) {
@@ -7324,11 +7348,11 @@ function parseDurationExpressionToMinutes(value: string): number | null {
     }
   }
 
-  if (/^(?:uma|1)\s+hora$/u.test(normalized)) {
+  if (/^(?:uma|1)\s+hora(?:\b|$)/u.test(normalized)) {
     return 60;
   }
 
-  const hourOnlyMatch = normalized.match(/^(\d{1,2})\s*(?:h|hora|horas)$/u);
+  const hourOnlyMatch = normalized.match(/^(\d{1,2})\s*(?:h|hora|horas)(?:\b|$)/u);
   if (hourOnlyMatch) {
     const hours = Number.parseInt(hourOnlyMatch[1], 10);
     if (Number.isFinite(hours) && hours > 0) {

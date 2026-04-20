@@ -303,6 +303,28 @@
       ]
     },
     {
+      "id": "duration_with_typo_title_and_durar_preserves_end_time",
+      "turns": [
+        {
+          "content": "Marca me cabeleireio hoje as 12 durar 40min sem descricao",
+          "expect": {
+            "command": "create_event",
+            "isComplete": true,
+            "shouldAskFollowUp": false,
+            "needsCalendarAction": true,
+            "missingFieldsExcludes": ["title", "startTime", "endTime", "description"],
+            "extractedDataSubset": {
+              "title": "Cabeleireiro",
+              "date": "{{today}}",
+              "startTime": "12:00",
+              "endTime": "12:40"
+            },
+            "extractedDataAbsent": ["description"]
+          }
+        }
+      ]
+    },
+    {
       "id": "duration_reuniao_with_compact_com_one_hour_thirty_minutes",
       "turns": [
         {
