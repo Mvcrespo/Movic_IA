@@ -719,7 +719,7 @@ async function processMessagePayload(
       finalInterpretation = {
         ...finalInterpretation,
         reply: calendarResult.reply,
-        needsCalendarAction: false,
+        needsCalendarAction: true,
         shouldAskFollowUp: false,
         followUpQuestion: "",
         missingFields: []
@@ -760,7 +760,7 @@ async function processMessagePayload(
       finalInterpretation = {
         ...finalInterpretation,
         reply: calendarResult.reply ?? finalInterpretation.reply,
-        needsCalendarAction: false,
+        needsCalendarAction: true,
         shouldAskFollowUp: false,
         followUpQuestion: "",
         missingFields: []

@@ -293,12 +293,15 @@ async function requestStructuredJsonFromOllama<T>({
     });
 
     if (!response.ok) {
+      const errorDetail = await getOllamaErrorDetail(response);
       if (env.ollamaTimingLogs) {
         console.log(
-          `[extractor-service] Ollama /api/chat falhou em ${Date.now() - startedAt}ms (${response.status} ${response.statusText})`
+          `[extractor-service] Ollama /api/chat falhou em ${Date.now() - startedAt}ms (${response.status} ${response.statusText}${errorDetail ? ` | ${errorDetail}` : ""})`
         );
       }
-      throw new Error(`Ollama respondeu com ${response.status} ${response.statusText}`);
+      throw new Error(
+        `Ollama respondeu com ${response.status} ${response.statusText}${errorDetail ? `: ${errorDetail}` : ""}`
+      );
     }
 
     const body = (await response.json()) as {
@@ -439,8 +442,9 @@ async function ensureModelAvailableOnce(): Promise<void> {
 
   const tagsResponse = await fetch(`${env.ollamaBaseUrl.replace(/\/$/, "")}/api/tags`);
   if (!tagsResponse.ok) {
+    const errorDetail = await getOllamaErrorDetail(tagsResponse);
     throw new Error(
-      `Nao foi possivel listar modelos no Ollama: ${tagsResponse.status} ${tagsResponse.statusText}`
+      `Nao foi possivel listar modelos no Ollama: ${tagsResponse.status} ${tagsResponse.statusText}${errorDetail ? `: ${errorDetail}` : ""}`
     );
   }
 
@@ -467,8 +471,9 @@ async function ensureModelAvailableOnce(): Promise<void> {
   });
 
   if (!pullResponse.ok) {
+    const errorDetail = await getOllamaErrorDetail(pullResponse);
     throw new Error(
-      `Falhou o pull do modelo ${env.model}: ${pullResponse.status} ${pullResponse.statusText}`
+      `Falhou o pull do modelo ${env.model}: ${pullResponse.status} ${pullResponse.statusText}${errorDetail ? `: ${errorDetail}` : ""}`
     );
   }
 }
@@ -493,6 +498,30 @@ async function waitForOllamaReady(): Promise<void> {
   }
 
   throw new Error("O Ollama nao ficou pronto a tempo.");
+}
+
+async function getOllamaErrorDetail(response: Response): Promise<string> {
+  try {
+    const raw = (await response.text()).trim();
+
+    if (!raw) {
+      return "";
+    }
+
+    const parsed = safeJsonParse(raw);
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      "error" in parsed &&
+      typeof parsed.error === "string"
+    ) {
+      return parsed.error;
+    }
+
+    return raw;
+  } catch {
+    return "";
+  }
 }
 
 async function readJsonBody(request: IncomingMessage): Promise<unknown> {
