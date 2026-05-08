@@ -2687,6 +2687,7 @@ function renderDiscordTabBody(input: {
                       <code class="big-code">${escapeHtml(input.activeLinkCode.code)}</code>
                       <span class="code-meta">Válido até ${escapeHtml(input.codeExpiresLabel ?? "")}</span>
                       <span class="code-meta">Tempo restante: <strong data-code-countdown>--:--</strong></span>
+                      <span class="code-meta">Comando direto: <code>!code ${escapeHtml(input.activeLinkCode.code)}</code></span>
                     </div>
                   `
                   : `<p>Ainda não existe nenhum código ativo.</p>`
@@ -2697,7 +2698,6 @@ function renderDiscordTabBody(input: {
                   <button class="button secondary" type="button" data-copy-link-code>Copiar !code</button>
                 </div>
               </form>
-              <p class="hint">Comando direto: <code>!code ${escapeHtml(input.activeLinkCode?.code ?? "CODIGO")}</code></p>
               <p class="copy-feedback" data-copy-feedback></p>
             `
         }
@@ -2796,7 +2796,7 @@ function renderAppleTabBody(appleConnection: AppleCalendarConnection | null): st
         <div class="state-grid">
           <div class="state-item">
             <span class="state-label">Conta</span>
-            <strong>${escapeHtml(connection?.accountEmail ?? "Por configurar")}</strong>
+            <strong style="overflow-wrap:anywhere;word-break:break-word;">${escapeHtml(connection?.accountEmail ?? "Por configurar")}</strong>
           </div>
           <div class="state-item">
             <span class="state-label">Modo</span>
@@ -2942,7 +2942,7 @@ function renderGoogleTabBody(googleConnection: GoogleCalendarConnection | null):
         <div class="state-grid">
           <div class="state-item">
             <span class="state-label">Conta</span>
-            <strong>${escapeHtml(connection?.accountEmail ?? "Por configurar")}</strong>
+            <strong style="overflow-wrap:anywhere;word-break:break-word;">${escapeHtml(connection?.accountEmail ?? "Por configurar")}</strong>
           </div>
           <div class="state-item">
             <span class="state-label">Modo</span>

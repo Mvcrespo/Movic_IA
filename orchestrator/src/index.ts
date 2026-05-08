@@ -2243,7 +2243,10 @@ function normalizeInterpretation(
 ): LlmInterpretation {
   const intentSourceText = normalizedMessageContent?.trim() || message.content;
   const updateIntentDetected = detectUpdateEventIntent(message.content, intentSourceText);
-  const deleteIntentDetected = /\bapaga(?:r)?\b/u.test(normalizeLooseText(intentSourceText));
+  const deleteIntentDetected = detectDeleteEventIntent(
+    message.content,
+    normalizedMessageContent
+  );
   const normalizedReply = (interpretation.reply ?? "").trim();
   const normalizedFollowUp = (interpretation.followUpQuestion ?? "").trim();
   const mergedExtractedData = sanitizeTimeFieldsFromCurrentTurn(
@@ -2334,6 +2337,24 @@ function normalizeInterpretation(
   }
 
   if (
+    (normalized.command === "chat" ||
+      normalized.command === "unknown" ||
+      normalized.command === "list_events" ||
+      !normalized.hasCommand) &&
+    deleteIntentDetected &&
+    !createIntentDetected &&
+    !updateIntentDetected
+  ) {
+    normalized.command = "delete_event";
+    normalized.hasCommand = true;
+    normalized.isComplete = false;
+    normalized.needsCalendarAction = false;
+    normalized.shouldAskFollowUp = false;
+    normalized.reply = "";
+    normalized.followUpQuestion = "";
+  }
+
+  if (
     looksLikeListEventsIntent(intentSourceText) &&
     !createIntentDetected &&
     !updateIntentDetected &&
@@ -2413,11 +2434,18 @@ function normalizeInterpretation(
   }
 
   if (normalized.command === "create_event") {
+    normalized = {
+      ...normalized,
+      extractedData: applyExplicitDurationFallback(
+        normalized.extractedData,
+        intentSourceText
+      )
+    };
+
     const extractedData = sanitizeExtractedDataKeys(normalized.extractedData);
     if (
       hasExplicitDescriptionSkipInstruction(message.content) &&
-      !Array.isArray(extractedData.batchItems) &&
-      !hasNonEmptyValue(extractedData.description)
+      !Array.isArray(extractedData.batchItems)
     ) {
       extractedData.__descriptionSkipped = true;
       delete extractedData.description;
@@ -2454,6 +2482,43 @@ function normalizeInterpretation(
   }
 
   return normalized;
+}
+
+function applyExplicitDurationFallback(
+  extractedData: Record<string, unknown>,
+  messageText: string
+): Record<string, unknown> {
+  const next = { ...extractedData };
+  const currentEndTime = normalizeClockTimeValue(next.endTime);
+  if (currentEndTime) {
+    next.endTime = currentEndTime;
+    return next;
+  }
+
+  const currentStartTime =
+    normalizeClockTimeValue(next.startTime) ?? normalizeClockTimeValue(next.time);
+  if (!currentStartTime) {
+    return next;
+  }
+
+  const explicitDurationMinutes = extractExplicitDurationMinutes(messageText);
+  if (explicitDurationMinutes === null) {
+    return next;
+  }
+
+  const derivedEndTime = addMinutesToClockTime(currentStartTime, explicitDurationMinutes);
+  if (!derivedEndTime) {
+    return next;
+  }
+
+  next.startTime = currentStartTime;
+  next.time = currentStartTime;
+  next.endTime = derivedEndTime;
+  if (!hasNonEmptyValue(next.rawTime)) {
+    next.rawTime = String(currentStartTime);
+  }
+
+  return next;
 }
 
 function shouldHandleAdvancedCreateEvent(
@@ -4505,6 +4570,50 @@ function detectUpdateEventIntent(rawText: string, normalizedText?: string): bool
   );
 }
 
+function looksLikeDeleteEventIntent(text: string): boolean {
+  const normalized = normalizeLooseText(text);
+  if (
+    /\b(?:apaga|apagar|apague|remove|remover|remova|elimina|eliminar|elimine)\b/u.test(
+      normalized
+    )
+  ) {
+    return true;
+  }
+
+  const candidateTokens = normalized
+    .split(/\s+/u)
+    .filter(Boolean)
+    .slice(0, 5);
+  const deleteVerbs = [
+    "apaga",
+    "apagar",
+    "apague",
+    "remove",
+    "remover",
+    "remova",
+    "elimina",
+    "eliminar",
+    "elimine"
+  ];
+
+  return candidateTokens.some((token) =>
+    deleteVerbs.some(
+      (verb) =>
+        token.length >= 4 &&
+        token[0] === verb[0] &&
+        Math.abs(token.length - verb.length) <= 1 &&
+        getLevenshteinDistance(token, verb) <= 1
+    )
+  );
+}
+
+function detectDeleteEventIntent(rawText: string, normalizedText?: string): boolean {
+  return (
+    looksLikeDeleteEventIntent(rawText) ||
+    (typeof normalizedText === "string" && looksLikeDeleteEventIntent(normalizedText))
+  );
+}
+
 function getLevenshteinDistance(left: string, right: string): number {
   if (left === right) {
     return 0;
@@ -4568,7 +4677,7 @@ function shouldHandleListEvents(
     pending?.command !== "list_events" &&
     (detectCreateEventIntent(sourceText) ||
       looksLikeUpdateEventIntent(sourceText) ||
-      /\bapaga(?:r)?\b/u.test(normalizeLooseText(sourceText)))
+      looksLikeDeleteEventIntent(sourceText))
   ) {
     return false;
   }
@@ -4979,14 +5088,20 @@ function buildListEventsReply(events: CalendarEventSummary[], query: ListEventsQ
 function buildDailyListSections(events: CalendarEventSummary[], compact: boolean): string[] {
   const sections: string[] = [];
   let currentDate: string | null = null;
+  let eventIndexForDate = 0;
 
   for (const event of events) {
     if (event.date !== currentDate) {
+      if (sections.length > 0) {
+        sections.push("");
+      }
       currentDate = event.date;
+      eventIndexForDate = 0;
       sections.push(formatFriendlyDate(event.date));
     }
 
-    sections.push(`  - ${formatListEventLine(event, { compact })}`);
+    eventIndexForDate += 1;
+    sections.push(`${eventIndexForDate}. ${formatListEventLine(event, { compact })}`);
   }
 
   return sections;
@@ -4996,25 +5111,36 @@ function buildWeeklyListSections(events: CalendarEventSummary[], compact: boolea
   const sections: string[] = [];
   let currentWeekKey: string | null = null;
   let currentDate: string | null = null;
+  let eventIndexForDate = 0;
 
   for (const event of events) {
     const weekRange = getWeekRange(parseIsoDate(event.date), 0);
     const weekKey = `${formatIsoDate(weekRange.start)}_${formatIsoDate(weekRange.end)}`;
 
     if (weekKey !== currentWeekKey) {
+      if (sections.length > 0) {
+        sections.push("");
+      }
       currentWeekKey = weekKey;
       currentDate = null;
+      eventIndexForDate = 0;
       sections.push(
         `Semana de ${formatShortDate(formatIsoDate(weekRange.start))} a ${formatShortDate(formatIsoDate(weekRange.end))}`
       );
+      sections.push("");
     }
 
     if (event.date !== currentDate) {
+      if (sections.length > 0 && sections[sections.length - 1] !== "") {
+        sections.push("");
+      }
       currentDate = event.date;
-      sections.push(`  ${formatFriendlyDate(event.date)}`);
+      eventIndexForDate = 0;
+      sections.push(formatFriendlyDate(event.date));
     }
 
-    sections.push(`    - ${formatListEventLine(event, { compact })}`);
+    eventIndexForDate += 1;
+    sections.push(`${eventIndexForDate}. ${formatListEventLine(event, { compact })}`);
   }
 
   return sections;
@@ -5106,7 +5232,7 @@ function isLikelyListPeriodOnlyReply(text: string): boolean {
     normalized.length <= 80 &&
     !looksLikeCreateIntent &&
     !looksLikeUpdateEventIntent(normalized) &&
-    !/\bapaga(?:r)?\b/u.test(normalized)
+    !looksLikeDeleteEventIntent(normalized)
   );
 }
 
@@ -5144,7 +5270,7 @@ function shouldContinueRecentListEventsContext(
   if (
     detectCreateEventIntent(text) ||
     looksLikeUpdateEventIntent(text) ||
-    /\bapaga(?:r)?\b/u.test(normalizeLooseText(text))
+    looksLikeDeleteEventIntent(text)
   ) {
     return false;
   }
@@ -5704,7 +5830,7 @@ function resolveDeleteDateRangeFromMessage(
 function splitDeleteClauses(text: string): string[] {
   return text
     .split(
-      /\s+e\s+(?=(?:na|no|segunda|terca|terÃ§a|quarta|quinta|sexta|sabado|sÃ¡bado|domingo|apaga|deixa|so|sÃ³|apenas|o|a|os|as|\d+\b))/iu
+      /\s+e\s+(?=(?:na|no|segunda|terca|terÃ§a|quarta|quinta|sexta|sabado|sÃ¡bado|domingo|apaga|remove|elimina|deixa|so|sÃ³|apenas|o|a|os|as|\d+\b))/iu
     )
     .map((clause) => clause.trim())
     .filter((clause) => clause.length > 0);
@@ -6583,6 +6709,12 @@ function enrichCreateEventInterpretation(
     delete extracted.description;
   }
 
+  // Se o utilizador disse explicitamente para nao guardar descricao,
+  // a instrucao deve prevalecer sobre qualquer texto inventado pelo LLM.
+  if (descriptionSkipped) {
+    delete extracted.description;
+  }
+
   const hasDescription = hasNonEmptyValue(extracted.description);
 
   if (hasTime) {
@@ -6762,7 +6894,12 @@ function mergeExtractedData(
     false;
   const previousHadTitle = hasNonEmptyValue(previous.title);
   const explicitDescriptionSkip =
-    previousMissingFields?.includes("description") && isDescriptionSkipReply(latestMessage);
+    current.__descriptionSkipped === true ||
+    hasExplicitDescriptionSkipInstruction(latestMessage) ||
+    (
+      previousMissingFields?.includes("description") === true &&
+      isDescriptionSkipReply(latestMessage)
+    );
   const expectingStartTime =
     previousMissingFields?.includes("startTime") ||
     previousMissingFields?.includes("time") ||
@@ -7302,6 +7439,7 @@ function parseDurationExpressionToMinutes(value: string): number | null {
   const normalized = normalizeLooseText(value)
     .replace(/^[,:;.\s-]+|[,:;.\s-]+$/gu, "")
     .replace(/\b(?:de|duracao)\s+/gu, "")
+    .replace(/^(?:uma|um)\s+(?=\d)/u, "")
     .trim();
 
   if (!normalized) {

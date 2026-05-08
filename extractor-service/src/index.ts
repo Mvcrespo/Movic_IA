@@ -109,12 +109,21 @@ type OllamaTagsResponse = {
   }>;
 };
 
+function resolveSchemaRepairAttempts(rawValue: string | undefined, fallback: number): number {
+  const parsed = Number(rawValue);
+  return Number.isInteger(parsed) && parsed >= 1 ? parsed : fallback;
+}
+
 const env = {
   port: Number(process.env.EXTRACTOR_SERVICE_PORT ?? "8004"),
   ollamaBaseUrl: process.env.OLLAMA_BASE_URL ?? "http://ollama:11434",
   model: process.env.EXTRACTOR_MODEL ?? process.env.OLLAMA_MODEL ?? "qwen2.5:3b",
   autoPull: (process.env.EXTRACTOR_AUTO_PULL ?? "true").toLowerCase() === "true",
   ollamaKeepAlive: process.env.OLLAMA_KEEP_ALIVE ?? "15m",
+  schemaRepairAttempts: resolveSchemaRepairAttempts(
+    process.env.EXTRACTOR_SCHEMA_REPAIR_ATTEMPTS ?? process.env.OLLAMA_SCHEMA_REPAIR_ATTEMPTS,
+    4
+  ),
   ollamaTimingLogs:
     (process.env.OLLAMA_TIMING_LOGS ?? "true").toLowerCase() === "true"
 };
@@ -175,7 +184,7 @@ type OllamaChatMessage = {
   content: string;
 };
 
-const maxSchemaRepairAttempts = 2;
+const maxSchemaRepairAttempts = env.schemaRepairAttempts;
 
 const server = createServer(async (request, response) => {
   try {
@@ -601,14 +610,101 @@ function validateExtractionResponse(
 
 function safeJsonParse(value: string): ExtractionResponse | null {
   for (const candidate of getJsonCandidates(value)) {
-    try {
-      return JSON.parse(candidate) as ExtractionResponse;
-    } catch {
-      continue;
+    for (const parseCandidate of buildJsonRepairCandidates(candidate)) {
+      try {
+        return normalizeExtractionResponseShape(
+          JSON.parse(parseCandidate) as Record<string, unknown>
+        );
+      } catch {
+        continue;
+      }
     }
   }
 
   return null;
+}
+
+function buildJsonRepairCandidates(value: string): string[] {
+  const candidates = new Set<string>([value]);
+  const balanced = appendMissingJsonClosers(value);
+  if (balanced !== value) {
+    candidates.add(balanced);
+  }
+  return [...candidates];
+}
+
+function appendMissingJsonClosers(value: string): string {
+  let curlyBalance = 0;
+  let squareBalance = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (const char of value) {
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+
+    if (char === "\"") {
+      inString = !inString;
+      continue;
+    }
+
+    if (inString) {
+      continue;
+    }
+
+    if (char === "{") {
+      curlyBalance += 1;
+    } else if (char === "}") {
+      curlyBalance = Math.max(0, curlyBalance - 1);
+    } else if (char === "[") {
+      squareBalance += 1;
+    } else if (char === "]") {
+      squareBalance = Math.max(0, squareBalance - 1);
+    }
+  }
+
+  if (curlyBalance === 0 && squareBalance === 0) {
+    return value;
+  }
+
+  return `${value}${"]".repeat(squareBalance)}${"}".repeat(curlyBalance)}`;
+}
+
+function normalizeExtractionResponseShape(
+  parsed: Record<string, unknown>
+): ExtractionResponse {
+  const record = { ...parsed };
+  const fieldEvidence =
+    record.fieldEvidence && typeof record.fieldEvidence === "object"
+      ? { ...(record.fieldEvidence as Record<string, unknown>) }
+      : null;
+
+  if (fieldEvidence) {
+    if (
+      !Array.isArray(record.missingFields) &&
+      Array.isArray(fieldEvidence.missingFields) &&
+      fieldEvidence.missingFields.every((field) => typeof field === "string")
+    ) {
+      record.missingFields = fieldEvidence.missingFields;
+      delete fieldEvidence.missingFields;
+    }
+
+    if (typeof record.notes !== "string" && typeof fieldEvidence.notes === "string") {
+      record.notes = fieldEvidence.notes;
+      delete fieldEvidence.notes;
+    }
+
+    record.fieldEvidence = fieldEvidence;
+  }
+
+  return record as ExtractionResponse;
 }
 
 function getJsonCandidates(value: string): string[] {

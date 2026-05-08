@@ -87,12 +87,21 @@ type OllamaTagsResponse = {
   }>;
 };
 
+function resolveSchemaRepairAttempts(rawValue: string | undefined, fallback: number): number {
+  const parsed = Number(rawValue);
+  return Number.isInteger(parsed) && parsed >= 1 ? parsed : fallback;
+}
+
 const env = {
   port: Number(process.env.VALIDATOR_SERVICE_PORT ?? "8005"),
   ollamaBaseUrl: process.env.OLLAMA_BASE_URL ?? "http://ollama:11434",
   model: process.env.VALIDATOR_MODEL ?? process.env.OLLAMA_MODEL ?? "qwen2.5:3b",
   autoPull: (process.env.VALIDATOR_AUTO_PULL ?? "true").toLowerCase() === "true",
   ollamaKeepAlive: process.env.OLLAMA_KEEP_ALIVE ?? "15m",
+  schemaRepairAttempts: resolveSchemaRepairAttempts(
+    process.env.VALIDATOR_SCHEMA_REPAIR_ATTEMPTS ?? process.env.OLLAMA_SCHEMA_REPAIR_ATTEMPTS,
+    4
+  ),
   ollamaTimingLogs:
     (process.env.OLLAMA_TIMING_LOGS ?? "true").toLowerCase() === "true"
 };
@@ -165,7 +174,7 @@ type OllamaChatMessage = {
   content: string;
 };
 
-const maxSchemaRepairAttempts = 2;
+const maxSchemaRepairAttempts = env.schemaRepairAttempts;
 
 const server = createServer(async (request, response) => {
   try {

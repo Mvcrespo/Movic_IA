@@ -604,6 +604,10 @@ onBeforeUnmount(() => {
               <div class="mt-4 font-mono text-4xl font-black tracking-[0.14em] text-cyan-100">{{ activeLinkCode.code }}</div>
               <div class="mt-4 text-sm text-slate-300">{{ i18n.validUntil }} {{ formatTimestamp(activeLinkCode.expiresAt, "-") }}</div>
               <div class="mt-2 text-sm text-slate-200">{{ i18n.timeLeft }}: <strong>{{ countdown }}</strong></div>
+              <p class="mt-4 text-sm font-semibold text-cyan-100">
+                {{ i18n.directCommand }}:
+                <code class="ml-1 rounded-full border border-cyan-300/18 bg-slate-950/45 px-3 py-1 font-mono text-cyan-50">!code {{ activeLinkCode.code }}</code>
+              </p>
             </div>
             <p v-else class="mt-4 text-sm leading-7 text-slate-300">{{ i18n.noCode }}</p>
             <div class="mt-6 flex flex-wrap gap-3">
@@ -612,7 +616,6 @@ onBeforeUnmount(() => {
               </form>
               <button class="secondary-button rounded-full px-5 py-3 text-sm font-semibold" type="button" @click="copyCommand">{{ i18n.copyCode }}</button>
             </div>
-            <p class="mt-4 text-sm font-semibold text-cyan-100">{{ i18n.directCommand }}: <code>!code {{ activeLinkCode?.code ?? "CODIGO" }}</code></p>
             <p class="mt-2 min-h-[1.5rem] text-sm font-semibold text-cyan-100">{{ copyFeedback }}</p>
           </div>
         </article>
@@ -688,7 +691,7 @@ onBeforeUnmount(() => {
           <div class="mt-6 grid gap-4 sm:grid-cols-2">
             <div class="rounded-[1.5rem] border border-white/10 bg-slate-950/55 p-5">
               <div class="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">{{ i18n.account }}</div>
-              <div class="mt-3 text-lg font-semibold text-white">{{ appleConnection?.accountEmail ?? "Por configurar" }}</div>
+              <div class="mt-3 break-all text-base font-semibold leading-snug text-white sm:text-lg">{{ appleConnection?.accountEmail ?? "Por configurar" }}</div>
             </div>
             <div class="rounded-[1.5rem] border border-white/10 bg-slate-950/55 p-5">
               <div class="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">{{ i18n.mode }}</div>
