@@ -1,18 +1,18 @@
 # Movic IA
 
-Movic IA é uma plataforma para orquestrar conversas no Discord, gerir eventos numa base local e sincronizar integrações externas a partir de uma dashboard web moderna. A stack atual junta um bot Discord, um orchestrator com serviços de IA, um calendar hub local e conectores para Apple Calendar, Google Calendar e Notion.
+Movic IA is a platform for orchestrating Discord conversations, managing events in a local database, and synchronizing external integrations through a modern web dashboard. The current stack combines a Discord bot, an AI orchestrator, a local calendar hub, and connectors for Apple Calendar, Google Calendar, and Notion.
 
-## O que o projeto faz hoje
+## What the project does today
 
-- Recebe mensagens diretas no Discord em tempo real.
-- Interpreta pedidos com uma pipeline separada de normalização, intenção, extração e validação.
-- Guarda eventos e histórico numa base PostgreSQL local.
-- Expõe uma dashboard pública e privada em `Vue + Vite + Tailwind`.
-- Permite ligar Discord, Apple, Google e Notion por utilizador.
-- Cria uma conta admin inicial automaticamente quando a base de configuração está vazia.
-- Permite criar, desativar, reativar e apagar utilizadores a partir da dashboard.
+- Receives direct Discord messages in real time.
+- Interprets requests through separate normalization, intent, extraction, and validation pipelines.
+- Stores events and history in a local PostgreSQL database.
+- Provides a public and private dashboard built with `Vue + Vite + Tailwind`.
+- Lets each user connect Discord, Apple, Google, and Notion.
+- Automatically creates an initial admin account when the configuration database is empty.
+- Lets administrators create, disable, reactivate, and delete users from the dashboard.
 
-## Arquitetura atual
+## Current architecture
 
 ```text
 Discord DM
@@ -35,100 +35,100 @@ Dashboard (Vue + Node)
   -> connectors
 ```
 
-## Serviços incluídos
+## Included services
 
-- `gateway`: bot Discord e comandos `!code`, `!show`, `!cancel`, `!delete`.
-- `dashboard-service`: home pública, login, gestão de utilizadores e integrações.
-- `orchestrator`: cérebro conversacional e coordenação do fluxo.
-- `calendar-service`: fonte local de verdade para eventos e sincronização.
-- `apple-connector`: ligação CalDAV ao ecossistema Apple.
-- `google-connector`: ligação OAuth ao Google Calendar.
-- `notion-connector`: ligação OAuth ao Notion e base operacional.
-- `postgres`: dados operacionais.
-- `config-postgres`: configurações, utilizadores, sessões e credenciais cifradas.
-- `ollama`: runtime local dos modelos.
-- `llm-service`, `normalizer-service`, `extractor-service`, `validator-service`: pipeline de IA.
+- `gateway`: Discord bot and the `!code`, `!show`, `!cancel`, and `!delete` commands.
+- `dashboard-service`: public home page, login, user management, and integrations.
+- `orchestrator`: conversational engine and flow coordination.
+- `calendar-service`: local source of truth for events and synchronization.
+- `apple-connector`: CalDAV connection to the Apple ecosystem.
+- `google-connector`: OAuth connection to Google Calendar.
+- `notion-connector`: OAuth connection to Notion and operational database.
+- `postgres`: operational data.
+- `config-postgres`: configuration, users, sessions, and encrypted credentials.
+- `ollama`: local model runtime.
+- `llm-service`, `normalizer-service`, `extractor-service`, `validator-service`: AI pipeline.
 
-## Requisitos
+## Requirements
 
-- Docker Desktop com `docker compose`
-- Node.js 22+ e npm
-- Acesso ao Discord Developer Portal
-- Credenciais Google e Notion se quiseres ativar essas integrações
-- Uma Apple ID com app-specific password se quiseres ativar Apple Calendar
+- Docker Desktop with `docker compose`
+- Node.js 22+ and npm
+- Access to the Discord Developer Portal
+- Google and Notion credentials if you want to enable those integrations
+- An Apple ID with an app-specific password if you want to enable Apple Calendar
 
-## Arranque rápido
+## Quick start
 
-1. Obtém o token do Discord.
+1. Get the Discord token.
 
-Vai a `https://discord.com/developers/applications`, cria uma aplicação, adiciona um bot e, no separador `Bot`, faz `Reset Token` ou `Copy Token`. Ativa também `Message Content Intent`. Guarda esse token para colocares no `.env`.
+Go to `https://discord.com/developers/applications`, create an application, add a bot, and use `Reset Token` or `Copy Token` in the `Bot` tab. Also enable `Message Content Intent`. Store the token so you can place it in `.env`.
 
-2. Duplica o ficheiro de exemplo:
+2. Copy the example environment file:
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-3. Preenche pelo menos estas variáveis no `.env`:
+3. Fill in at least these variables in `.env`:
 
-- `DISCORD_TOKEN`: cola aqui o token do bot Discord.
-- `DASHBOARD_INTERNAL_API_TOKEN`: segredo interno partilhado entre serviços.
-- `CONFIG_ENCRYPTION_KEY`: chave usada para cifrar credenciais de integrações.
-- `DEFAULT_ADMIN_EMAIL`: email da conta admin inicial.
-- `DEFAULT_ADMIN_PASSWORD`: password temporária da conta admin inicial.
-- `POSTGRES_URL` e `CONFIG_POSTGRES_URL`: URLs completas das duas bases de dados, sem valores predefinidos no código.
+- `DISCORD_TOKEN`: Discord bot token.
+- `DASHBOARD_INTERNAL_API_TOKEN`: internal secret shared between services.
+- `CONFIG_ENCRYPTION_KEY`: key used to encrypt integration credentials.
+- `DEFAULT_ADMIN_EMAIL`: initial admin account email.
+- `DEFAULT_ADMIN_PASSWORD`: temporary initial admin password.
+- `POSTGRES_URL` and `CONFIG_POSTGRES_URL`: complete database URLs, with no defaults in the code.
 
-Para `DASHBOARD_INTERNAL_API_TOKEN` e `CONFIG_ENCRYPTION_KEY`, usa dois valores longos e diferentes. Em PowerShell, podes gerar cada valor com:
+For `DASHBOARD_INTERNAL_API_TOKEN` and `CONFIG_ENCRYPTION_KEY`, use two long and different values. In PowerShell, you can generate each value with:
 
 ```powershell
 -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 64 | ForEach-Object { [char]$_ })
 ```
 
-4. Sobe a stack:
+4. Start the stack:
 
 ```powershell
 docker compose up -d --build
 ```
 
-No primeiro arranque, o `ollama` pode demorar alguns minutos a descarregar o modelo configurado, por defeito `qwen2.5:3b`. É normal veres logs como `Modelo qwen2.5:3b nao encontrado. A fazer pull...` e várias tentativas `retrying` enquanto o download estabiliza. Se ficar preso durante muito tempo em `connection refused`, confirma a ligação à internet, VPN, proxy ou firewall.
+On the first start, `ollama` may take a few minutes to download the configured model, which defaults to `qwen2.5:3b`. It is normal to see logs such as `Model qwen2.5:3b not found. Pulling...` and several `retrying` attempts while the download stabilizes. If it remains stuck on `connection refused` for a long time, check your internet connection, VPN, proxy, or firewall.
 
-Se quiseres que o Cloudflare Tunnel arranque automaticamente com o `docker compose`, adiciona também `CLOUDFLARE_TUNNEL_TOKEN` ao teu `.env`. A stack já inclui um serviço `cloudflared` para isso.
+If you want the Cloudflare Tunnel to start automatically with `docker compose`, also add `CLOUDFLARE_TUNNEL_TOKEN` to `.env`. The stack already includes a `cloudflared` service for this.
 
-5. Abre a dashboard:
+5. Open the dashboard:
 
 ```text
 http://localhost:8088
 ```
 
-6. Entra com `DEFAULT_ADMIN_EMAIL` e `DEFAULT_ADMIN_PASSWORD`.
+6. Sign in with `DEFAULT_ADMIN_EMAIL` and `DEFAULT_ADMIN_PASSWORD`.
 
-Na primeira entrada, a password inicial é forçada a mudar para uma nova password escolhida por ti.
+On the first login, the initial password must be changed to a new password of your choice.
 
-7. Liga o Discord à dashboard.
+7. Connect Discord to the dashboard.
 
-Depois de entrares na dashboard, gera o código de ligação e envia ao bot por DM:
+After signing in to the dashboard, generate the connection code and send it to the bot by DM:
 
 ```text
-!code CODIGO
+!code CODE
 ```
 
-## Modelos Ollama `:cloud`
+## Ollama `:cloud` models
 
-Se preferires usar modelos Ollama com sufixo `:cloud`, como por exemplo `gpt-oss:120b-cloud` ou `qwen3.5:cloud`, a stack atual já os suporta através do `OLLAMA_BASE_URL` e dos modelos definidos no `.env`.
+If you prefer to use Ollama models with the `:cloud` suffix, such as `gpt-oss:120b-cloud` or `qwen3.5:cloud`, the current stack already supports them through `OLLAMA_BASE_URL` and the models defined in `.env`.
 
-Mas há uma condição importante: depois de subires os containers, tens de fazer login no Ollama Cloud dentro do container `ollama`.
+There is one important requirement: after starting the containers, you must sign in to Ollama Cloud inside the `ollama` container.
 
 ```powershell
 docker compose exec ollama ollama signin
 ```
 
-Este `signin` deve ser feito no container Docker com Ollama, não no utilizador normal da tua máquina, porque os serviços (`llm-service`, `normalizer-service`, `extractor-service` e `validator-service`) falam com o Ollama que está a correr dentro do Docker.
+This `signin` must be performed in the Docker container running Ollama, not as the normal user on your machine, because the services (`llm-service`, `normalizer-service`, `extractor-service`, and `validator-service`) communicate with the Ollama instance running inside Docker.
 
-Se não fizeres esse passo, o `docker compose` pode até conseguir fazer `pull` do modelo, mas depois os pedidos reais para `/api/chat` podem falhar com `401 Unauthorized`.
+If you skip this step, `docker compose` may be able to pull the model, but real requests to `/api/chat` can then fail with `401 Unauthorized`.
 
-## Modo hibrido Ollama local + Ollama Cloud
+## Hybrid local Ollama + Ollama Cloud mode
 
-A stack suporta escolher o destino do Ollama por servico. A configuracao recomendada para producao na VM e:
+The stack supports choosing the Ollama destination per service. The recommended production configuration for the VM is:
 
 ```env
 OLLAMA_BASE_URL=http://ollama:11434
@@ -155,58 +155,58 @@ VALIDATOR_OLLAMA_API_KEY=
 VALIDATOR_AUTO_PULL=true
 ```
 
-Neste modo, `llm-service` e `extractor-service` usam Ollama Cloud com `Authorization: Bearer ...`, enquanto `normalizer-service` e `validator-service` ficam no Ollama local da VM. Quando um servico usa Ollama Cloud com API key, a stack nao tenta fazer `pull` do modelo nesse servico.
+In this mode, `llm-service` and `extractor-service` use Ollama Cloud with `Authorization: Bearer ...`, while `normalizer-service` and `validator-service` use the VM's local Ollama instance. When a service uses Ollama Cloud with an API key, the stack does not try to pull the model for that service.
 
-## Variáveis do `.env`
+## `.env` variables
 
-O `.env.example` já vem alinhado com a stack atual e dividido por grupos:
+The `.env.example` file is aligned with the current stack and grouped by area:
 
 - Core services
-- Dashboard and auth
-- Config database and encryption
+- Dashboard and authentication
+- Configuration database and encryption
 - Apple connector
 - Google connector
 - Notion connector
 - Ollama / local AI models
 
-### Variáveis obrigatórias para o arranque base
+### Required variables for the base startup
 
-- `DISCORD_TOKEN`: token do bot Discord.
-- `DASHBOARD_INTERNAL_API_TOKEN`: segredo interno partilhado entre serviços.
-- `CONFIG_ENCRYPTION_KEY`: chave usada para cifrar credenciais de integrações no `config-postgres`.
-- `DEFAULT_ADMIN_EMAIL`: email da conta admin inicial.
-- `DEFAULT_ADMIN_PASSWORD`: password temporária da conta admin inicial.
+- `DISCORD_TOKEN`: Discord bot token.
+- `DASHBOARD_INTERNAL_API_TOKEN`: internal secret shared between services.
+- `CONFIG_ENCRYPTION_KEY`: key used to encrypt integration credentials in `config-postgres`.
+- `DEFAULT_ADMIN_EMAIL`: initial admin account email.
+- `DEFAULT_ADMIN_PASSWORD`: temporary initial admin password.
 
-### Variáveis das integrações opcionais
+### Optional integration variables
 
-- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`: só são necessárias para ativar Google Calendar.
-- `NOTION_CLIENT_ID`, `NOTION_CLIENT_SECRET`, `NOTION_REDIRECT_URI`: só são necessárias para ativar Notion.
-- `NOTION_WEBHOOK_VERIFICATION_TOKEN`: token recebido na verificação do webhook Notion; necessário para aceitar eventos.
-- `CLOUDFLARE_TUNNEL_TOKEN`: só é necessária se quiseres arrancar o `cloudflared` no `docker compose`.
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`: only required to enable Google Calendar.
+- `NOTION_CLIENT_ID`, `NOTION_CLIENT_SECRET`, `NOTION_REDIRECT_URI`: only required to enable Notion.
+- `NOTION_WEBHOOK_VERIFICATION_TOKEN`: token received during Notion webhook verification; required to accept events.
+- `CLOUDFLARE_TUNNEL_TOKEN`: only required if you want to start `cloudflared` through `docker compose`.
 
-### Variáveis úteis mas opcionais
+### Useful but optional variables
 
-- `PUBLIC_CONTACT_EMAIL`: email mostrado na home pública para pedidos de acesso.
-- `APPLE_CALDAV_URL`: por defeito já aponta para `https://caldav.icloud.com`.
-- `ORCHESTRATOR_HISTORY_LIMIT`: profundidade do histórico lido pelo orchestrator.
-- `DASHBOARD_CONFIG_CACHE_MS`: cache curta do gateway para a configuração da dashboard.
+- `PUBLIC_CONTACT_EMAIL`: email shown on the public home page for access requests.
+- `APPLE_CALDAV_URL`: defaults to `https://caldav.icloud.com`.
+- `ORCHESTRATOR_HISTORY_LIMIT`: amount of history read by the orchestrator.
+- `DASHBOARD_CONFIG_CACHE_MS`: short gateway cache for dashboard configuration.
 
-## Integrações opcionais
+## Optional integrations
 
-Google, Notion e Apple não são necessários para o arranque base. Podes deixar estas credenciais para o fim e configurar só quando quiseres ativar cada integração na dashboard.
+Google, Notion, and Apple are not required for the base startup. You can leave these credentials until later and configure each integration when you want to enable it in the dashboard.
 
 ### Google Calendar
 
-1. Vai à Google Cloud Console.
-2. Cria ou escolhe um projeto.
-3. Ativa a `Google Calendar API`.
-4. Configura o `OAuth consent screen`.
-5. Cria credenciais do tipo `OAuth Client ID` para `Web application`.
-6. Em `Authorized redirect URIs`, adiciona exatamente o valor de `GOOGLE_REDIRECT_URI`.
-7. Copia o `Client ID` para `GOOGLE_CLIENT_ID`.
-8. Copia o `Client Secret` para `GOOGLE_CLIENT_SECRET`.
+1. Go to Google Cloud Console.
+2. Create or select a project.
+3. Enable the `Google Calendar API`.
+4. Configure the `OAuth consent screen`.
+5. Create `OAuth Client ID` credentials for a `Web application`.
+6. Under `Authorized redirect URIs`, add exactly the value of `GOOGLE_REDIRECT_URI`.
+7. Copy the `Client ID` to `GOOGLE_CLIENT_ID`.
+8. Copy the `Client Secret` to `GOOGLE_CLIENT_SECRET`.
 
-Se estiveres a correr localmente com a configuração base deste projeto, o redirect é:
+When running locally with this project's base configuration, the redirect is:
 
 ```text
 http://localhost:8088/dashboard/google/callback
@@ -214,13 +214,13 @@ http://localhost:8088/dashboard/google/callback
 
 ### Notion
 
-1. Vai a `https://developers.notion.com/`.
-2. Cria uma integração com suporte a OAuth para utilizador.
-3. Define o redirect URI para o mesmo valor usado em `NOTION_REDIRECT_URI`.
-4. Copia o `Client ID` para `NOTION_CLIENT_ID`.
-5. Copia o `Client Secret` para `NOTION_CLIENT_SECRET`.
+1. Go to `https://developers.notion.com/`.
+2. Create an integration with user OAuth support.
+3. Set the redirect URI to the same value used in `NOTION_REDIRECT_URI`.
+4. Copy the `Client ID` to `NOTION_CLIENT_ID`.
+5. Copy the `Client Secret` to `NOTION_CLIENT_SECRET`.
 
-O redirect local esperado por defeito é:
+The default local redirect is:
 
 ```text
 http://localhost:8088/dashboard/notion/callback
@@ -228,67 +228,67 @@ http://localhost:8088/dashboard/notion/callback
 
 ### Apple Calendar
 
-Apple não usa `client_id` e `client_secret` globais no `.env` desta stack.
+Apple does not use global `client_id` and `client_secret` values in this stack's `.env`.
 
-O fluxo atual é este:
+The current flow is:
 
-1. O utilizador entra na dashboard.
-2. Abre o separador Apple.
-3. Introduz o email Apple.
-4. Gera uma `app-specific password` na Apple ID em `Sign-In and Security > App-Specific Passwords`.
-5. Cola essa password na dashboard para testar e guardar a ligação.
+1. The user signs in to the dashboard.
+2. Opens the Apple tab.
+3. Enters their Apple email.
+4. Generates an `app-specific password` in Apple ID under `Sign-In and Security > App-Specific Passwords`.
+5. Enters that password in the dashboard to test and save the connection.
 
-O endereço CalDAV por defeito já vem preenchido:
+The default CalDAV address is already filled in:
 
 ```text
 https://caldav.icloud.com
 ```
 
-## Contacto público e onboarding
+## Public contact and onboarding
 
-- A home pública usa `PUBLIC_CONTACT_EMAIL` para orientar pedidos de acesso.
-- A conta admin inicial nasce a partir de `DEFAULT_ADMIN_EMAIL` e `DEFAULT_ADMIN_PASSWORD`.
-- Depois de criares mais utilizadores na dashboard, cada conta pode gerir as próprias integrações separadamente.
+- The public home page uses `PUBLIC_CONTACT_EMAIL` to guide access requests.
+- The initial admin account is created from `DEFAULT_ADMIN_EMAIL` and `DEFAULT_ADMIN_PASSWORD`.
+- After creating more users in the dashboard, each account can manage its own integrations separately.
 
-## Comandos úteis
+## Useful commands
 
-Arrancar tudo:
+Start everything:
 
 ```powershell
 docker compose up -d --build
 ```
 
-Ver logs:
+View logs:
 
 ```powershell
 docker compose logs -f
 ```
 
-Ver apenas o túnel Cloudflare:
+View only the Cloudflare Tunnel:
 
 ```powershell
 docker compose logs -f cloudflared
 ```
 
-Abrir portas internas apenas para desenvolvimento local. O override fica limitado a `127.0.0.1` e não deve ser usado para expor a VM na rede:
+Expose internal ports only for local development. This override is limited to `127.0.0.1` and must not be used to expose the VM on the network:
 
 ```powershell
 docker compose -f docker-compose.yml -f docker-compose.dev-ports.yml up -d --build
 ```
 
-Ativar GPU para o Ollama local, quando o driver NVIDIA e o NVIDIA Container Toolkit estiverem prontos:
+Enable the GPU for local Ollama when the NVIDIA driver and NVIDIA Container Toolkit are ready:
 
 ```powershell
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
 ```
 
-Parar tudo:
+Stop everything:
 
 ```powershell
 docker compose down
 ```
 
-Build local dos workspaces:
+Build the local workspaces:
 
 ```powershell
 npm run build
@@ -296,32 +296,32 @@ npm run build
 
 ## Troubleshooting
 
-### Cloudflare Tunnel no Docker
+### Cloudflare Tunnel in Docker
 
-Se antes arrancavas o túnel manualmente com:
+If you previously started the tunnel manually with:
 
 ```powershell
 "C:\Program Files (x86)\cloudflared\cloudflared.exe" tunnel run movic-tunnel
 ```
 
-isso usava a configuração local do `cloudflared` no Windows. Dentro do Docker, a forma mais simples de automatizar é correr o túnel com token:
+that used the local `cloudflared` configuration on Windows. Inside Docker, the simplest way to automate it is to run the tunnel with a token:
 
-1. Vai ao painel Cloudflare Zero Trust e copia o token do teu tunnel `movic-tunnel`.
-2. Adiciona `CLOUDFLARE_TUNNEL_TOKEN=...` ao `.env`.
-3. Arranca a stack com `docker compose up -d --build`.
-4. Confirma com `docker compose logs -f cloudflared`.
+1. Go to the Cloudflare Zero Trust dashboard and copy the token for your `movic-tunnel`.
+2. Add `CLOUDFLARE_TUNNEL_TOKEN=...` to `.env`.
+3. Start the stack with `docker compose up -d --build`.
+4. Check the logs with `docker compose logs -f cloudflared`.
 
-Se quiseres mesmo correr o túnel por nome, como `tunnel run movic-tunnel`, o container precisa de montar os ficheiros de configuração e credenciais do `cloudflared`, como `config.yml`, `cert.pem` e o ficheiro JSON do tunnel. Neste repositório ficou preparada a versão por token porque é a forma mais simples de manter tudo automático dentro do `docker compose`.
+If you really want to run the tunnel by name, such as `tunnel run movic-tunnel`, the container must mount the `cloudflared` configuration and credential files, such as `config.yml`, `cert.pem`, and the tunnel JSON file. This repository uses the token-based version because it is the simplest way to keep everything automated inside `docker compose`.
 
-### Ollama fica preso a descarregar o modelo
+### Ollama is stuck downloading the model
 
-Se `docker compose exec ollama ollama list` mostrar apenas o cabeçalho, ainda não há nenhum modelo instalado:
+If `docker compose exec ollama ollama list` shows only the header, no model has been installed yet:
 
 ```text
 NAME    ID    SIZE    MODIFIED
 ```
 
-Se o pull ficar muito tempo em `pulling manifest` ou os logs mostrarem erros como `connect: connection refused` para `cloudflarestorage.com`, isola o download do modelo. Para isso, para temporariamente os serviços que usam IA, reinicia o `ollama` e faz o pull manual uma vez:
+If the pull stays on `pulling manifest` for a long time or the logs show errors such as `connect: connection refused` for `cloudflarestorage.com`, isolate the model download. Stop the services that use AI, restart `ollama`, and pull the model manually once:
 
 ```powershell
 docker compose stop normalizer-service llm-service extractor-service validator-service orchestrator gateway
@@ -329,43 +329,43 @@ docker compose restart ollama
 docker compose exec ollama ollama pull qwen2.5:3b
 ```
 
-Quando terminar com `success`, confirma que o modelo ficou instalado:
+When it finishes with `success`, confirm that the model is installed:
 
 ```powershell
 docker compose exec ollama ollama list
 ```
 
-Deves ver uma linha parecida com:
+You should see a line similar to:
 
 ```text
 NAME          ID              SIZE      MODIFIED
 qwen2.5:3b    ...             1.9 GB    ...
 ```
 
-Depois volta a levantar a pipeline:
+Then start the pipeline again:
 
 ```powershell
 docker compose start normalizer-service llm-service extractor-service validator-service orchestrator gateway
 ```
 
-Se o download continuar a falhar, confirma ligação à internet, VPN, proxy, firewall ou tenta outra rede. Depois de instalado, o modelo fica guardado no volume `ollama-data` e não precisa de ser descarregado em cada arranque.
+If the download keeps failing, check your internet connection, VPN, proxy, firewall, or try another network. Once installed, the model is stored in the `ollama-data` volume and does not need to be downloaded on every start.
 
-### Logs antigos depois de resolver
+### Old logs after resolving an issue
 
-Depois de reiniciar serviços, `docker compose logs` pode continuar a mostrar erros antigos no histórico. Para veres só o estado recente:
+After restarting services, `docker compose logs` may continue to show old errors from the history. To see only recent output:
 
 ```powershell
 docker compose logs --since=1m normalizer-service llm-service extractor-service validator-service orchestrator gateway
 ```
 
-## Notas importantes
+## Important notes
 
-- O `.env` real não deve ser versionado.
-- O `.env.example` contém campos sensíveis vazios de propósito; preenche-os no `.env` local e nunca versões esse ficheiro.
-- Por defeito, o `docker-compose.yml` não publica portas da aplicação no host. A dashboard fica acessível pelo Cloudflare Tunnel, e Postgres, Ollama, orchestrator e serviços internos ficam protegidos dentro da rede Docker. Usa `docker-compose.dev-ports.yml` apenas para depurar localmente em `127.0.0.1`.
-- A GPU do Ollama local fica num override separado (`docker-compose.gpu.yml`) para a stack continuar a arrancar mesmo quando a VM ainda não tem driver/runtime NVIDIA pronto.
-- Com `OLLAMA_AUTO_PULL=true`, `NORMALIZER_AUTO_PULL=true`, `EXTRACTOR_AUTO_PULL=true` e `VALIDATOR_AUTO_PULL=true`, os serviços tentam descarregar automaticamente o modelo local no primeiro arranque. Depois de o modelo existir no volume do `ollama`, os arranques seguintes tendem a ser bem mais rápidos.
-- Os conectores Google e Notion arrancam sem OAuth real, mas só conseguem ligar contas quando preencheres as credenciais certas.
-- A ligação Apple depende do email Apple e da app-specific password introduzidos depois na dashboard.
-- Mensagens de sync em background como `Google Calendar não está ligado` ou `A sincronização Apple está desligada` são esperadas enquanto essas integrações ainda não estiverem configuradas na dashboard.
-- A remoção de utilizadores na dashboard também limpa dados associados, incluindo sessões, ligações e sincronizações registadas.
+- The real `.env` file must not be committed.
+- `.env.example` intentionally contains empty sensitive fields; fill them in the local `.env` file and never commit that file.
+- By default, `docker-compose.yml` does not publish application ports on the host. The dashboard is accessible through the Cloudflare Tunnel, while PostgreSQL, Ollama, the orchestrator, and internal services stay protected inside the Docker network. Use `docker-compose.dev-ports.yml` only for local debugging on `127.0.0.1`.
+- The local Ollama GPU is kept in a separate override (`docker-compose.gpu.yml`) so the stack can still start when the VM does not yet have the NVIDIA driver/runtime ready.
+- With `OLLAMA_AUTO_PULL=true`, `NORMALIZER_AUTO_PULL=true`, `EXTRACTOR_AUTO_PULL=true`, and `VALIDATOR_AUTO_PULL=true`, the services automatically try to download the local model on the first start. Once the model exists in the `ollama` volume, subsequent starts are usually much faster.
+- Google and Notion connectors start without real OAuth credentials, but they can only connect accounts after the correct credentials are provided.
+- Apple connection depends on the Apple email and app-specific password entered later in the dashboard.
+- Background sync messages such as `Google Calendar is not connected` or `Apple synchronization is disabled` are expected while those integrations have not yet been configured in the dashboard.
+- Deleting users in the dashboard also removes associated data, including sessions, connections, and registered synchronizations.
