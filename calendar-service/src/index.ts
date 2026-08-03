@@ -132,9 +132,7 @@ type CategoryDefinition = {
 
 const env = {
   port: Number(process.env.CALENDAR_SERVICE_PORT ?? "8003"),
-  postgresUrl:
-    process.env.POSTGRES_URL ??
-    "postgres://agentpulse:agentpulse_dev_password@postgres:5432/agentpulse",
+  postgresUrl: process.env.POSTGRES_URL ?? "",
   timezone: process.env.APP_TIMEZONE ?? "Europe/Lisbon",
   appleConnectorUrl:
     process.env.APPLE_CONNECTOR_URL ?? "http://apple-connector:8006",
@@ -142,8 +140,7 @@ const env = {
     process.env.GOOGLE_CONNECTOR_URL ?? "http://google-connector:8007",
   notionConnectorUrl:
     process.env.NOTION_CONNECTOR_URL ?? "http://notion-connector:8008",
-  internalApiToken:
-    process.env.DASHBOARD_INTERNAL_API_TOKEN ?? "pulse_dashboard_internal_token_change_me"
+  internalApiToken: process.env.DASHBOARD_INTERNAL_API_TOKEN ?? ""
 };
 
 validateEnv();
@@ -1365,6 +1362,10 @@ async function notifyNotionConnector(path: string, eventId: string): Promise<voi
 }
 
 function validateEnv(): void {
+  if (!env.internalApiToken) {
+    throw new Error("DASHBOARD_INTERNAL_API_TOKEN e obrigatoria.");
+  }
+
   if (Number.isNaN(env.port) || env.port < 1 || env.port > 65535) {
     throw new Error("CALENDAR_SERVICE_PORT deve ser um numero valido.");
   }

@@ -14,10 +14,36 @@ services:
       ORCHESTRATOR_URL: ${ORCHESTRATOR_URL:-http://orchestrator:8000}
       DASHBOARD_SERVICE_URL: ${DASHBOARD_SERVICE_URL:-http://dashboard-service:8088}
       DASHBOARD_BASE_URL: ${DASHBOARD_BASE_URL:-http://localhost:8088}
-      DASHBOARD_INTERNAL_API_TOKEN: ${DASHBOARD_INTERNAL_API_TOKEN:-pulse_dashboard_internal_token_change_me}
+      DASHBOARD_INTERNAL_API_TOKEN: ${DASHBOARD_INTERNAL_API_TOKEN:?DASHBOARD_INTERNAL_API_TOKEN is required}
       DASHBOARD_CONFIG_CACHE_MS: ${DASHBOARD_CONFIG_CACHE_MS:-3000}
+      DISCORD_GATEWAY_INTERNAL_PORT: ${DISCORD_GATEWAY_INTERNAL_PORT:-8010}
     depends_on:
       orchestrator:
+        condition: service_started
+    restart: unless-stopped
+
+  telegram-gateway:
+    image: ghcr.io/mvcrespo/movic-telegram-gateway:latest
+    profiles:
+      - telegram
+    build:
+      context: .
+      dockerfile: telegram/Dockerfile
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      ORCHESTRATOR_URL: ${ORCHESTRATOR_URL:-http://orchestrator:8000}
+      DASHBOARD_SERVICE_URL: ${DASHBOARD_SERVICE_URL:-http://dashboard-service:8088}
+      DASHBOARD_BASE_URL: ${DASHBOARD_BASE_URL:-http://localhost:8088}
+      DASHBOARD_INTERNAL_API_TOKEN: ${DASHBOARD_INTERNAL_API_TOKEN:?DASHBOARD_INTERNAL_API_TOKEN is required}
+      TELEGRAM_POLL_TIMEOUT_SECONDS: ${TELEGRAM_POLL_TIMEOUT_SECONDS:-30}
+      TELEGRAM_GATEWAY_INTERNAL_PORT: ${TELEGRAM_GATEWAY_INTERNAL_PORT:-8011}
+    depends_on:
+      orchestrator:
+        condition: service_started
+      dashboard-service:
         condition: service_started
     restart: unless-stopped
 
@@ -35,11 +61,12 @@ services:
       APPLE_CONNECTOR_URL: ${APPLE_CONNECTOR_URL:-http://apple-connector:8006}
       GOOGLE_CONNECTOR_URL: ${GOOGLE_CONNECTOR_URL:-http://google-connector:8007}
       NOTION_CONNECTOR_URL: ${NOTION_CONNECTOR_URL:-http://notion-connector:8008}
-      CONFIG_POSTGRES_URL: ${CONFIG_POSTGRES_URL:-postgres://agentpulse_config:agentpulse_config_password@config-postgres:5432/agentpulse_config}
-      DASHBOARD_INTERNAL_API_TOKEN: ${DASHBOARD_INTERNAL_API_TOKEN:-pulse_dashboard_internal_token_change_me}
+      DISCORD_GATEWAY_URL: ${DISCORD_GATEWAY_URL:-http://gateway:8010}
+      TELEGRAM_GATEWAY_URL: ${TELEGRAM_GATEWAY_URL:-http://telegram-gateway:8011}
+      CONFIG_POSTGRES_URL: ${CONFIG_POSTGRES_URL:?CONFIG_POSTGRES_URL is required}
+      DASHBOARD_INTERNAL_API_TOKEN: ${DASHBOARD_INTERNAL_API_TOKEN:?DASHBOARD_INTERNAL_API_TOKEN is required}
+      NOTION_WEBHOOK_VERIFICATION_TOKEN: ${NOTION_WEBHOOK_VERIFICATION_TOKEN:-}
       APP_TIMEZONE: ${APP_TIMEZONE:-Europe/Lisbon}
-    ports:
-      - "${DASHBOARD_PORT:-8088}:8088"
     depends_on:
       config-postgres:
         condition: service_healthy
@@ -53,6 +80,8 @@ services:
 
   cloudflared:
     image: cloudflare/cloudflared:latest
+    profiles:
+      - tunnel
     environment:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
     command: tunnel --no-autoupdate run
@@ -71,14 +100,13 @@ services:
     environment:
       NODE_ENV: production
       ORCHESTRATOR_PORT: ${ORCHESTRATOR_PORT:-8000}
-      POSTGRES_URL: ${POSTGRES_URL:-postgres://agentpulse:agentpulse_dev_password@postgres:5432/agentpulse}
+      POSTGRES_URL: ${POSTGRES_URL:?POSTGRES_URL is required}
+      DASHBOARD_INTERNAL_API_TOKEN: ${DASHBOARD_INTERNAL_API_TOKEN:?DASHBOARD_INTERNAL_API_TOKEN is required}
       LLM_SERVICE_URL: ${LLM_SERVICE_URL:-http://llm-service:8001}
       NORMALIZER_SERVICE_URL: ${NORMALIZER_SERVICE_URL:-http://normalizer-service:8002}
       CALENDAR_SERVICE_URL: ${CALENDAR_SERVICE_URL:-http://calendar-service:8003}
       EXTRACTOR_SERVICE_URL: ${EXTRACTOR_SERVICE_URL:-http://extractor-service:8004}
       VALIDATOR_SERVICE_URL: ${VALIDATOR_SERVICE_URL:-http://validator-service:8005}
-    ports:
-      - "${ORCHESTRATOR_PORT:-8000}:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -97,15 +125,13 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-agentpulse}
-      POSTGRES_USER: ${POSTGRES_USER:-agentpulse}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-agentpulse_dev_password}
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-agentpulse} -d ${POSTGRES_DB:-agentpulse}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:?POSTGRES_USER is required} -d ${POSTGRES_DB:?POSTGRES_DB is required}"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -114,13 +140,13 @@ services:
   config-postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: ${CONFIG_POSTGRES_DB:-agentpulse_config}
-      POSTGRES_USER: ${CONFIG_POSTGRES_USER:-agentpulse_config}
-      POSTGRES_PASSWORD: ${CONFIG_POSTGRES_PASSWORD:-agentpulse_config_password}
+      POSTGRES_DB: ${CONFIG_POSTGRES_DB:?CONFIG_POSTGRES_DB is required}
+      POSTGRES_USER: ${CONFIG_POSTGRES_USER:?CONFIG_POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${CONFIG_POSTGRES_PASSWORD:?CONFIG_POSTGRES_PASSWORD is required}
     volumes:
       - config-postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${CONFIG_POSTGRES_USER:-agentpulse_config} -d ${CONFIG_POSTGRES_DB:-agentpulse_config}"]
+      test: ["CMD-SHELL", "pg_isready -U ${CONFIG_POSTGRES_USER:?CONFIG_POSTGRES_USER is required} -d ${CONFIG_POSTGRES_DB:?CONFIG_POSTGRES_DB is required}"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -139,8 +165,6 @@ services:
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2}
       OLLAMA_AUTO_PULL: ${OLLAMA_AUTO_PULL:-true}
-    ports:
-      - "${LLM_SERVICE_PORT:-8001}:8001"
     depends_on:
       ollama:
         condition: service_started
@@ -159,8 +183,6 @@ services:
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
       NORMALIZER_MODEL: ${NORMALIZER_MODEL:-qwen2.5:3b}
       NORMALIZER_AUTO_PULL: ${NORMALIZER_AUTO_PULL:-true}
-    ports:
-      - "${NORMALIZER_SERVICE_PORT:-8002}:8002"
     depends_on:
       ollama:
         condition: service_started
@@ -179,8 +201,6 @@ services:
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
       EXTRACTOR_MODEL: ${EXTRACTOR_MODEL:-qwen2.5:3b}
       EXTRACTOR_AUTO_PULL: ${EXTRACTOR_AUTO_PULL:-true}
-    ports:
-      - "${EXTRACTOR_SERVICE_PORT:-8004}:8004"
     depends_on:
       ollama:
         condition: service_started
@@ -199,8 +219,6 @@ services:
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
       VALIDATOR_MODEL: ${VALIDATOR_MODEL:-qwen2.5:3b}
       VALIDATOR_AUTO_PULL: ${VALIDATOR_AUTO_PULL:-true}
-    ports:
-      - "${VALIDATOR_SERVICE_PORT:-8005}:8005"
     depends_on:
       ollama:
         condition: service_started
@@ -216,14 +234,12 @@ services:
     environment:
       NODE_ENV: production
       CALENDAR_SERVICE_PORT: ${CALENDAR_SERVICE_PORT:-8003}
-      POSTGRES_URL: ${POSTGRES_URL:-postgres://agentpulse:agentpulse_dev_password@postgres:5432/agentpulse}
+      POSTGRES_URL: ${POSTGRES_URL:?POSTGRES_URL is required}
       APPLE_CONNECTOR_URL: ${APPLE_CONNECTOR_URL:-http://apple-connector:8006}
       GOOGLE_CONNECTOR_URL: ${GOOGLE_CONNECTOR_URL:-http://google-connector:8007}
       NOTION_CONNECTOR_URL: ${NOTION_CONNECTOR_URL:-http://notion-connector:8008}
-      DASHBOARD_INTERNAL_API_TOKEN: ${DASHBOARD_INTERNAL_API_TOKEN:-pulse_dashboard_internal_token_change_me}
+      DASHBOARD_INTERNAL_API_TOKEN: ${DASHBOARD_INTERNAL_API_TOKEN:?DASHBOARD_INTERNAL_API_TOKEN is required}
       APP_TIMEZONE: ${APP_TIMEZONE:-Europe/Lisbon}
-    ports:
-      - "${CALENDAR_SERVICE_PORT:-8003}:8003"
     depends_on:
       postgres:
         condition: service_healthy
@@ -245,10 +261,10 @@ services:
     environment:
       NODE_ENV: production
       APPLE_CONNECTOR_PORT: ${APPLE_CONNECTOR_PORT:-8006}
-      POSTGRES_URL: ${POSTGRES_URL:-postgres://agentpulse:agentpulse_dev_password@postgres:5432/agentpulse}
-      CONFIG_POSTGRES_URL: ${CONFIG_POSTGRES_URL:-postgres://agentpulse_config:agentpulse_config_password@config-postgres:5432/agentpulse_config}
+      POSTGRES_URL: ${POSTGRES_URL:?POSTGRES_URL is required}
+      CONFIG_POSTGRES_URL: ${CONFIG_POSTGRES_URL:?CONFIG_POSTGRES_URL is required}
       CONFIG_ENCRYPTION_KEY: ${CONFIG_ENCRYPTION_KEY}
-      DASHBOARD_INTERNAL_API_TOKEN: ${DASHBOARD_INTERNAL_API_TOKEN:-pulse_dashboard_internal_token_change_me}
+      DASHBOARD_INTERNAL_API_TOKEN: ${DASHBOARD_INTERNAL_API_TOKEN:?DASHBOARD_INTERNAL_API_TOKEN is required}
       APP_TIMEZONE: ${APP_TIMEZONE:-Europe/Lisbon}
       APPLE_CALDAV_URL: ${APPLE_CALDAV_URL:-https://caldav.icloud.com}
       APPLE_SYNC_INTERVAL_MS: ${APPLE_SYNC_INTERVAL_MS:-60000}
@@ -271,10 +287,10 @@ services:
     environment:
       NODE_ENV: production
       GOOGLE_CONNECTOR_PORT: ${GOOGLE_CONNECTOR_PORT:-8007}
-      POSTGRES_URL: ${POSTGRES_URL:-postgres://agentpulse:agentpulse_dev_password@postgres:5432/agentpulse}
-      CONFIG_POSTGRES_URL: ${CONFIG_POSTGRES_URL:-postgres://agentpulse_config:agentpulse_config_password@config-postgres:5432/agentpulse_config}
+      POSTGRES_URL: ${POSTGRES_URL:?POSTGRES_URL is required}
+      CONFIG_POSTGRES_URL: ${CONFIG_POSTGRES_URL:?CONFIG_POSTGRES_URL is required}
       CONFIG_ENCRYPTION_KEY: ${CONFIG_ENCRYPTION_KEY}
-      DASHBOARD_INTERNAL_API_TOKEN: ${DASHBOARD_INTERNAL_API_TOKEN:-pulse_dashboard_internal_token_change_me}
+      DASHBOARD_INTERNAL_API_TOKEN: ${DASHBOARD_INTERNAL_API_TOKEN:?DASHBOARD_INTERNAL_API_TOKEN is required}
       APP_TIMEZONE: ${APP_TIMEZONE:-Europe/Lisbon}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
@@ -299,10 +315,10 @@ services:
     environment:
       NODE_ENV: production
       NOTION_CONNECTOR_PORT: ${NOTION_CONNECTOR_PORT:-8008}
-      POSTGRES_URL: ${POSTGRES_URL:-postgres://agentpulse:agentpulse_dev_password@postgres:5432/agentpulse}
-      CONFIG_POSTGRES_URL: ${CONFIG_POSTGRES_URL:-postgres://agentpulse_config:agentpulse_config_password@config-postgres:5432/agentpulse_config}
+      POSTGRES_URL: ${POSTGRES_URL:?POSTGRES_URL is required}
+      CONFIG_POSTGRES_URL: ${CONFIG_POSTGRES_URL:?CONFIG_POSTGRES_URL is required}
       CONFIG_ENCRYPTION_KEY: ${CONFIG_ENCRYPTION_KEY}
-      DASHBOARD_INTERNAL_API_TOKEN: ${DASHBOARD_INTERNAL_API_TOKEN:-pulse_dashboard_internal_token_change_me}
+      DASHBOARD_INTERNAL_API_TOKEN: ${DASHBOARD_INTERNAL_API_TOKEN:?DASHBOARD_INTERNAL_API_TOKEN is required}
       APP_TIMEZONE: ${APP_TIMEZONE:-Europe/Lisbon}
       NOTION_CLIENT_ID: ${NOTION_CLIENT_ID}
       NOTION_CLIENT_SECRET: ${NOTION_CLIENT_SECRET}
@@ -320,18 +336,9 @@ services:
 
   ollama:
     image: ollama/ollama
-    ports:
-      - "${OLLAMA_PORT:-11434}:11434"
     volumes:
       - ollama-data:/root/.ollama
     restart: unless-stopped
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
 
 volumes:
   ollama-data:

@@ -1,5 +1,6 @@
 ﻿import "dotenv/config";
 
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import {
   Client,
   GatewayIntentBits,
@@ -34,7 +35,14 @@ type RuntimeBotConfig = {
   channelId: string;
   userId: string;
   username?: string | null;
+  isPrimary?: boolean;
   linkedAt?: string | null;
+};
+
+type NotificationPreferenceChatResponse = {
+  success?: boolean;
+  handled?: boolean;
+  reply?: string;
 };
 
 type RawMessageCreatePayload = {
@@ -48,14 +56,19 @@ type RawMessageCreatePayload = {
   };
 };
 
+type InternalSendMessageRequest = {
+  channelId?: string;
+  message?: string;
+};
+
 const env = {
   discordToken: process.env.DISCORD_TOKEN ?? "",
   orchestratorUrl: process.env.ORCHESTRATOR_URL ?? "http://orchestrator:8000",
   dashboardServiceUrl: process.env.DASHBOARD_SERVICE_URL ?? "http://dashboard-service:8088",
   dashboardBaseUrl: process.env.DASHBOARD_BASE_URL ?? "http://localhost:8088",
-  dashboardInternalApiToken:
-    process.env.DASHBOARD_INTERNAL_API_TOKEN ?? "pulse_dashboard_internal_token_change_me",
-  runtimeConfigTtlMs: Number(process.env.DASHBOARD_CONFIG_CACHE_MS ?? "3000")
+  dashboardInternalApiToken: process.env.DASHBOARD_INTERNAL_API_TOKEN ?? "",
+  runtimeConfigTtlMs: Number(process.env.DASHBOARD_CONFIG_CACHE_MS ?? "3000"),
+  internalPort: Number(process.env.DISCORD_GATEWAY_INTERNAL_PORT ?? "8010")
 };
 
 const PROCESSING_EMOJI = "⏳";
@@ -127,6 +140,49 @@ client.on("error", (error) => {
 
 async function main(): Promise<void> {
   await client.login(env.discordToken);
+  startInternalServer();
+}
+
+function startInternalServer(): void {
+  const server = createServer(async (request, response) => {
+    try {
+      const requestUrl = new URL(request.url ?? "/", `http://localhost:${env.internalPort}`);
+      if (request.method === "GET" && requestUrl.pathname === "/health") {
+        return writeJson(response, 200, { status: "ok", service: "discord-gateway" });
+      }
+
+      if (request.method === "POST" && requestUrl.pathname === "/internal/send-message") {
+        if (!isAuthorizedInternalRequest(request)) {
+          return writeJson(response, 401, { success: false, error: "Nao autorizado." });
+        }
+
+        const payload = safeJsonParse(await readBody(request)) as InternalSendMessageRequest | null;
+        const channelId = payload?.channelId?.trim();
+        const message = payload?.message?.trim();
+
+        if (!channelId || !message) {
+          return writeJson(response, 400, { success: false, error: "Pedido incompleto." });
+        }
+
+        const channel = await client.channels.fetch(channelId);
+        if (!channel || !channel.isDMBased() || !channel.isSendable()) {
+          return writeJson(response, 400, { success: false, error: "Canal invalido." });
+        }
+
+        await sendMessage(channel, message);
+        return writeJson(response, 200, { success: true });
+      }
+
+      return writeJson(response, 404, { success: false, error: "Nao encontrado." });
+    } catch (error) {
+      console.error("[gateway] Erro no endpoint interno:", error);
+      return writeJson(response, 500, { success: false, error: "Erro interno." });
+    }
+  });
+
+  server.listen(env.internalPort, () => {
+    console.log(`[gateway] Endpoint interno na porta ${env.internalPort}.`);
+  });
 }
 
 async function handleRawMessageCreate(payload: RawMessageCreatePayload): Promise<void> {
@@ -208,12 +264,21 @@ async function handleIncomingMessage(message: Message): Promise<void> {
     return;
   }
 
+  const preferenceResult = await handleNotificationPreferenceMessage(message, runtimeConfig);
+  if (preferenceResult.handled) {
+    if (preferenceResult.reply) {
+      await sendMessage(message.channel, preferenceResult.reply);
+    }
+    await addReaction(message, SUCCESS_EMOJI).catch(() => undefined);
+    return;
+  }
+
   let processingReaction: MessageReaction | null = null;
 
   try {
     processingReaction = await addReaction(message, PROCESSING_EMOJI);
 
-    const outcome = await buildReply(message);
+    const outcome = await buildReply(message, runtimeConfig);
     await sendReplyToDiscord(message, outcome.reply);
 
     if (processingReaction) {
@@ -293,14 +358,16 @@ async function handleLinkCodeCommand(message: Message): Promise<void> {
         ? [
             "Esta conversa já estava ligada.",
             "Podes continuar a falar comigo normalmente, por exemplo: `Marca reunião amanhã às 11` ou `O que tenho hoje?`",
-            "Se faltar algum detalhe, eu pergunto-te aqui na conversa."
-          ].join("\n")
+            "Se faltar algum detalhe, eu pergunto-te aqui na conversa.",
+            result.setupPrompt ?? ""
+          ].filter(Boolean).join("\n")
         : [
             "Ligação concluída com sucesso.",
             "Esta DM ficou associada à tua conta da dashboard e já posso agir sobre a tua agenda a partir daqui.",
             "Podes escrever diretamente coisas como `Marca reunião amanhã às 11` ou `O que tenho hoje?`",
-            "Se faltar alguma informação, eu faço as perguntas certas para completar o pedido."
-          ].join("\n")
+            "Se faltar alguma informação, eu faço as perguntas certas para completar o pedido.",
+            result.setupPrompt ?? ""
+          ].filter(Boolean).join("\n")
     );
     await addReaction(message, SUCCESS_EMOJI).catch(() => undefined);
   } catch (error) {
@@ -350,7 +417,7 @@ async function handleCommandMessage(message: Message): Promise<void> {
   }
 }
 
-async function buildReply(message: Message): Promise<{ reply: string }> {
+async function buildReply(message: Message, runtimeConfig: RuntimeBotConfig): Promise<{ reply: string }> {
   const response = await fetch(`${env.orchestratorUrl.replace(/\/$/, "")}/messages`, {
     method: "POST",
     headers: {
@@ -359,7 +426,7 @@ async function buildReply(message: Message): Promise<{ reply: string }> {
     body: JSON.stringify({
       source: "discord-dm",
       channelId: message.channel.id,
-      userId: message.author.id,
+      userId: runtimeConfig.dashboardUserId ?? message.author.id,
       username: message.author.globalName ?? message.author.username,
       messageId: message.id,
       content: message.content,
@@ -468,7 +535,7 @@ async function resolveRuntimeConfigForMessage(
     const response = await fetch(
       `${env.dashboardServiceUrl.replace(/\/$/, "")}/api/runtime-config/resolve?channelId=${encodeURIComponent(
         channelId
-      )}&userId=${encodeURIComponent(userId)}`,
+      )}&userId=${encodeURIComponent(userId)}&platform=discord`,
       {
         headers: {
           "x-internal-api-token": env.dashboardInternalApiToken
@@ -487,6 +554,7 @@ async function resolveRuntimeConfigForMessage(
         channelId?: string;
         userId?: string;
         username?: string | null;
+        isPrimary?: boolean;
         linkedAt?: string | null;
       } | null;
     };
@@ -497,6 +565,7 @@ async function resolveRuntimeConfigForMessage(
           channelId: body.config.channelId,
           userId: body.config.userId,
           username: body.config.username,
+          isPrimary: body.config.isPrimary,
           linkedAt: body.config.linkedAt
         }
       : null;
@@ -516,7 +585,7 @@ async function claimLinkCode(input: {
   channelId: string;
   userId: string;
   username: string;
-}): Promise<RuntimeBotConfig & { alreadyLinked?: boolean }> {
+}): Promise<RuntimeBotConfig & { alreadyLinked?: boolean; setupPrompt?: string }> {
   const response = await fetch(
     `${env.dashboardServiceUrl.replace(/\/$/, "")}/api/link-code/claim`,
     {
@@ -533,10 +602,12 @@ async function claimLinkCode(input: {
     success?: boolean;
     error?: string;
     alreadyLinked?: boolean;
+    setupPrompt?: string;
     config?: {
       channelId?: string;
       userId?: string;
       username?: string | null;
+      isPrimary?: boolean;
       linkedAt?: string | null;
     } | null;
   };
@@ -549,9 +620,48 @@ async function claimLinkCode(input: {
     channelId: body.config.channelId,
     userId: body.config.userId,
     username: body.config.username,
+    isPrimary: body.config.isPrimary,
     linkedAt: body.config.linkedAt,
-    alreadyLinked: body.alreadyLinked
+    alreadyLinked: body.alreadyLinked,
+    setupPrompt: body.setupPrompt
   };
+}
+
+async function handleNotificationPreferenceMessage(
+  message: Message,
+  runtimeConfig: RuntimeBotConfig
+): Promise<{ handled: boolean; reply?: string }> {
+  try {
+    const response = await fetch(
+      `${env.dashboardServiceUrl.replace(/\/$/, "")}/api/notification-preferences/chat-message`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-internal-api-token": env.dashboardInternalApiToken
+        },
+        body: JSON.stringify({
+          platform: "discord",
+          channelId: message.channel.id,
+          userId: runtimeConfig.userId,
+          text: message.content
+        })
+      }
+    );
+
+    if (!response.ok) {
+      return { handled: false };
+    }
+
+    const body = (await response.json()) as NotificationPreferenceChatResponse;
+    return {
+      handled: body.handled === true,
+      reply: body.reply
+    };
+  } catch (error) {
+    console.error("[gateway] Nao foi possivel tratar preferencias de notificacao:", error);
+    return { handled: false };
+  }
 }
 
 async function sendMessage(channel: Message["channel"], message: string): Promise<void> {
@@ -726,8 +836,40 @@ function sleep(durationMs: number): Promise<void> {
   });
 }
 
+function isAuthorizedInternalRequest(request: IncomingMessage): boolean {
+  return request.headers["x-internal-api-token"] === env.dashboardInternalApiToken;
+}
+
+async function readBody(request: IncomingMessage): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of request) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+function safeJsonParse(rawBody: string): unknown {
+  try {
+    return JSON.parse(rawBody);
+  } catch {
+    return null;
+  }
+}
+
+function writeJson(response: ServerResponse, statusCode: number, body: unknown): void {
+  response.writeHead(statusCode, {
+    "content-type": "application/json; charset=utf-8"
+  });
+  response.end(JSON.stringify(body));
+}
+
 function validateEnv(): void {
   const missing: string[] = [];
+
+  if (!env.dashboardInternalApiToken) {
+    missing.push("DASHBOARD_INTERNAL_API_TOKEN");
+  }
 
   if (!env.discordToken) {
     missing.push("DISCORD_TOKEN");

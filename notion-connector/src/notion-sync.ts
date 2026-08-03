@@ -44,6 +44,11 @@ export type NotionSyncSummary = {
   lastError: string | null;
 };
 export type NotionWebhookResult = { success: boolean; message: string; syncTriggered: boolean };
+type NotionWebhookPayload = {
+  verification_token?: unknown;
+  workspace_id?: unknown;
+  integration_id?: unknown;
+};
 export type NotionConnectionSummary = {
   enabled: boolean;
   workspaceName: string | null;
@@ -122,6 +127,11 @@ type DashboardRuntimeLink = {
   linkedDiscordUserId: string | null;
   linkedDiscordUsername: string | null;
   conversationChannelId: string | null;
+  // Id canonico a usar como source_user_id ao importar eventos remotos.
+  primarySourceUserId: string | null;
+  // Todos os ids que pertencem a este utilizador da dashboard (UUID + ids
+  // ligados de qualquer plataforma), usados para decidir a quem pertence um evento.
+  ownedSourceUserIds: string[];
 };
 
 type NotionRemoteEvent = {
@@ -605,12 +615,81 @@ async function syncNotionForUser(
 
 export async function handleNotionWebhook(
   deps: NotionSyncDependencies,
-  _rawBody: string,
+  rawBody: string,
   _headers: Record<string, string | string[] | undefined>
 ): Promise<NotionWebhookResult> {
-  const syncResult = await syncNotionNow(deps);
+  let payload: NotionWebhookPayload;
+  try {
+    const parsed: unknown = JSON.parse(rawBody);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Webhook payload is not an object.");
+    }
+    payload = parsed as NotionWebhookPayload;
+  } catch {
+    throw new Error("Body JSON do webhook Notion inválido.");
+  }
+
+  if (typeof payload.verification_token === "string") {
+    return {
+      success: true,
+      message: "Verificação do webhook Notion recebida.",
+      syncTriggered: false
+    };
+  }
+
+  const workspaceId = typeof payload.workspace_id === "string" ? payload.workspace_id : null;
+  const integrationId = typeof payload.integration_id === "string" ? payload.integration_id : null;
+  if (!workspaceId && !integrationId) {
+    throw new Error("Webhook Notion sem workspace_id ou integration_id.");
+  }
+
+  const userIds = await listNotionConnectionUserIdsForWebhook(
+    deps.configPool,
+    workspaceId,
+    integrationId
+  );
+  if (userIds.length === 0) {
+    return {
+      success: true,
+      message: "Webhook Notion recebido sem ligação correspondente.",
+      syncTriggered: false
+    };
+  }
+
+  const summaries: NotionSyncSummary[] = [];
+  for (const userId of userIds) {
+    summaries.push(await syncNotionNow(deps, userId));
+  }
+
+  const syncResult = summaries.reduce<NotionSyncSummary>(
+    (total, summary) => ({
+      success: total.success && summary.success,
+      importedLocal: total.importedLocal + summary.importedLocal,
+      updatedLocal: total.updatedLocal + summary.updatedLocal,
+      deletedLocal: total.deletedLocal + summary.deletedLocal,
+      createdRemote: total.createdRemote + summary.createdRemote,
+      updatedRemote: total.updatedRemote + summary.updatedRemote,
+      deletedRemote: total.deletedRemote + summary.deletedRemote,
+      skipped: total.skipped + summary.skipped,
+      message: summary.message,
+      lastError: summary.lastError ?? total.lastError
+    }),
+    {
+      success: true,
+      importedLocal: 0,
+      updatedLocal: 0,
+      deletedLocal: 0,
+      createdRemote: 0,
+      updatedRemote: 0,
+      deletedRemote: 0,
+      skipped: 0,
+      message: "Notion sincronizado.",
+      lastError: null
+    }
+  );
+
   return {
-    success: true,
+    success: syncResult.success,
     message: syncResult.success ? "Webhook Notion processado." : syncResult.message,
     syncTriggered: true
   };
@@ -897,7 +976,11 @@ async function getEnabledNotionConnectionForDiscordUser(
         ON drs.user_id = nc.user_id
       WHERE nc.enabled = TRUE
         AND nc.access_token_encrypted IS NOT NULL
-        AND drs.linked_discord_user_id = $1
+        AND (
+          drs.linked_discord_user_id = $1
+          OR drs.linked_user_id = $1
+          OR nc.user_id = $1
+        )
       ORDER BY nc.updated_at DESC
       LIMIT 1
     `,
@@ -921,6 +1004,29 @@ async function listEnabledNotionConnectionUserIds(configPool: Pool): Promise<str
         AND user_id IS NOT NULL
       ORDER BY updated_at DESC
     `
+  );
+
+  return [...new Set(result.rows.map((row) => row.user_id).filter(Boolean))];
+}
+
+async function listNotionConnectionUserIdsForWebhook(
+  configPool: Pool,
+  workspaceId: string | null,
+  integrationId: string | null
+): Promise<string[]> {
+  const result = await configPool.query<{ user_id: string }>(
+    `
+      SELECT user_id
+      FROM notion_connections
+      WHERE enabled = TRUE
+        AND user_id IS NOT NULL
+        AND (
+          ($1::text IS NOT NULL AND workspace_id = $1)
+          OR ($2::text IS NOT NULL AND bot_id = $2)
+        )
+      ORDER BY updated_at DESC
+    `,
+    [workspaceId, integrationId]
   );
 
   return [...new Set(result.rows.map((row) => row.user_id).filter(Boolean))];
@@ -1033,7 +1139,7 @@ async function insertStoredEventFromRemote(
       deps.resolveCategoryLabel(remoteEvent.title, remoteEvent.description, remoteEvent.category),
       "notion",
       runtimeLink?.conversationChannelId ?? null,
-      runtimeLink?.linkedDiscordUserId ?? null,
+      runtimeLink?.primarySourceUserId ?? null,
       runtimeLink?.linkedDiscordUsername ?? null,
       remoteEvent.timezone
     ]
@@ -1049,7 +1155,7 @@ async function applyRemoteEventToLocal(
 ): Promise<void> {
   const sourceName = existingLocalEvent?.sourceName ?? "notion";
   const sourceChannelId = existingLocalEvent?.sourceChannelId ?? runtimeLink?.conversationChannelId ?? null;
-  const sourceUserId = existingLocalEvent?.sourceUserId ?? runtimeLink?.linkedDiscordUserId ?? null;
+  const sourceUserId = existingLocalEvent?.sourceUserId ?? runtimeLink?.primarySourceUserId ?? null;
   const sourceUsername = existingLocalEvent?.sourceUsername ?? runtimeLink?.linkedDiscordUsername ?? null;
 
   await deps.eventPool.query(
@@ -1111,20 +1217,39 @@ async function getDashboardRuntimeLink(
 ): Promise<DashboardRuntimeLink | null> {
   try {
     const result = await configPool.query(`
-      SELECT linked_discord_user_id, linked_discord_username, conversation_channel_id
+      SELECT linked_discord_user_id, linked_user_id, linked_discord_username, conversation_channel_id
         FROM dashboard_runtime_settings
        WHERE enabled = TRUE
          AND user_id = $1
          AND conversation_channel_id IS NOT NULL
-         AND linked_discord_user_id IS NOT NULL
-       ORDER BY updated_at DESC
-       LIMIT 1`, [userId]);
-    const row = result.rows[0] as Record<string, unknown> | undefined;
-    if (!row) return null;
+       ORDER BY updated_at DESC`, [userId]);
+    const rows = result.rows as Record<string, unknown>[];
+    if (rows.length === 0) return null;
+
+    const asString = (value: unknown): string | null =>
+      typeof value === "string" && value.length > 0 ? value : null;
+
+    // O id da conta do utilizador (UUID) tambem conta como dono dos eventos,
+    // porque alguns gateways (ex.: Telegram) gravam source_user_id = UUID.
+    const ownedSourceUserIds = new Set<string>([userId]);
+    for (const row of rows) {
+      const discordId = asString(row.linked_discord_user_id);
+      const linkedId = asString(row.linked_user_id);
+      if (discordId) ownedSourceUserIds.add(discordId);
+      if (linkedId) ownedSourceUserIds.add(linkedId);
+    }
+
+    const firstRow = rows[0];
+    // Carimbamos eventos importados do remoto sempre com o UUID da conta, para
+    // manter uma identidade unica de source_user_id em todo o sistema.
+    const primarySourceUserId = userId;
+
     return {
-      linkedDiscordUserId: typeof row.linked_discord_user_id === "string" ? row.linked_discord_user_id : null,
-      linkedDiscordUsername: typeof row.linked_discord_username === "string" ? row.linked_discord_username : null,
-      conversationChannelId: typeof row.conversation_channel_id === "string" ? row.conversation_channel_id : null
+      linkedDiscordUserId: asString(firstRow.linked_discord_user_id),
+      linkedDiscordUsername: asString(firstRow.linked_discord_username),
+      conversationChannelId: asString(firstRow.conversation_channel_id),
+      primarySourceUserId,
+      ownedSourceUserIds: [...ownedSourceUserIds]
     };
   } catch {
     return null;
@@ -1135,12 +1260,13 @@ function filterEventsForRuntimeUser(
   events: LocalCalendarEvent[],
   runtimeLink: DashboardRuntimeLink | null
 ): LocalCalendarEvent[] {
-  const linkedDiscordUserId = runtimeLink?.linkedDiscordUserId ?? null;
-  if (!linkedDiscordUserId) {
+  const ownedIds = runtimeLink?.ownedSourceUserIds ?? [];
+  if (ownedIds.length === 0) {
     return [];
   }
 
-  return events.filter((event) => event.sourceUserId === linkedDiscordUserId);
+  const owned = new Set(ownedIds);
+  return events.filter((event) => event.sourceUserId != null && owned.has(event.sourceUserId));
 }
 
 function filterSingleEventForRuntimeUser(
@@ -1151,12 +1277,12 @@ function filterSingleEventForRuntimeUser(
     return null;
   }
 
-  const linkedDiscordUserId = runtimeLink?.linkedDiscordUserId ?? null;
-  if (!linkedDiscordUserId) {
+  const ownedIds = runtimeLink?.ownedSourceUserIds ?? [];
+  if (ownedIds.length === 0) {
     return null;
   }
 
-  return event.sourceUserId === linkedDiscordUserId ? event : null;
+  return event.sourceUserId != null && ownedIds.includes(event.sourceUserId) ? event : null;
 }
 
 function mapStoredEvent(row: Record<string, unknown>): LocalCalendarEvent {

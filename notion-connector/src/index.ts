@@ -25,17 +25,14 @@ class HttpError extends Error {
   }
 }
 
+const MAX_REQUEST_BODY_BYTES = 256 * 1024;
+
 const env = {
   port: Number(process.env.NOTION_CONNECTOR_PORT ?? "8008"),
-  postgresUrl:
-    process.env.POSTGRES_URL ??
-    "postgres://agentpulse:agentpulse_dev_password@postgres:5432/agentpulse",
-  configPostgresUrl:
-    process.env.CONFIG_POSTGRES_URL ??
-    "postgres://agentpulse_config:agentpulse_config_password@config-postgres:5432/agentpulse_config",
+  postgresUrl: process.env.POSTGRES_URL ?? "",
+  configPostgresUrl: process.env.CONFIG_POSTGRES_URL ?? "",
   configEncryptionKey: process.env.CONFIG_ENCRYPTION_KEY ?? "",
-  internalApiToken:
-    process.env.DASHBOARD_INTERNAL_API_TOKEN ?? "pulse_dashboard_internal_token_change_me",
+  internalApiToken: process.env.DASHBOARD_INTERNAL_API_TOKEN ?? "",
   timezone: process.env.APP_TIMEZONE ?? "Europe/Lisbon",
   syncIntervalMs: Number(process.env.NOTION_SYNC_INTERVAL_MS ?? "60000"),
   notionClientId: process.env.NOTION_CLIENT_ID ?? "",
@@ -141,6 +138,7 @@ const server = createServer(async (request, response) => {
     }
 
     if (method === "POST" && path === "/providers/notion/webhook") {
+      ensureAuthorizedInternalRequest(request);
       const rawBody = await readBody(request);
       const result = await handleNotionWebhook(notionSyncDeps, rawBody, request.headers);
       return sendJson(response, 200, result);
@@ -221,9 +219,20 @@ async function notifyConnector(baseUrl: string, path: string, eventId: string): 
 }
 
 async function readBody(request: IncomingMessage): Promise<string> {
+  const contentLength = Number(request.headers["content-length"] ?? "");
+  if (Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BODY_BYTES) {
+    throw new HttpError(413, "Pedido demasiado grande.");
+  }
+
   const chunks: Buffer[] = [];
+  let totalBytes = 0;
   for await (const chunk of request) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    totalBytes += buffer.byteLength;
+    if (totalBytes > MAX_REQUEST_BODY_BYTES) {
+      throw new HttpError(413, "Pedido demasiado grande.");
+    }
+    chunks.push(buffer);
   }
   return Buffer.concat(chunks).toString("utf8");
 }

@@ -63,14 +63,14 @@ const pageCopy = computed(() =>
           <p class="text-base leading-8 text-slate-300">
             {{ pageCopy.body }}
           </p>
-          <div class="grid gap-4 md:grid-cols-2">
-            <div class="rounded-[1.5rem] border border-white/10 bg-slate-950/55 p-5">
-              <div class="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">{{ pageCopy.email }}</div>
-              <div class="mt-3 text-lg font-semibold text-white">{{ createdUser?.email }}</div>
+          <div class="grid min-w-0 gap-4 md:grid-cols-2">
+            <div class="min-w-0 rounded-[1.5rem] border border-white/10 bg-slate-950/55 p-5">
+              <div class="break-words text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">{{ pageCopy.email }}</div>
+              <div class="mt-3 min-w-0 break-all text-base font-semibold leading-7 text-white sm:text-lg">{{ createdUser?.email }}</div>
             </div>
-            <div class="rounded-[1.5rem] border border-white/10 bg-slate-950/55 p-5">
-              <div class="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">{{ pageCopy.temporaryPassword }}</div>
-              <div class="mt-3 font-mono text-lg font-semibold text-cyan-100">{{ temporaryPassword }}</div>
+            <div class="min-w-0 rounded-[1.5rem] border border-white/10 bg-slate-950/55 p-5">
+              <div class="break-words text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">{{ pageCopy.temporaryPassword }}</div>
+              <div class="mt-3 min-w-0 break-all font-mono text-base font-semibold leading-7 text-cyan-100 sm:text-lg">{{ temporaryPassword }}</div>
             </div>
           </div>
         </div>

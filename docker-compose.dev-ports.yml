@@ -1,0 +1,36 @@
+services:
+  dashboard-service:
+    ports:
+      - "127.0.0.1:${DASHBOARD_PORT:-8088}:8088"
+
+  orchestrator:
+    ports:
+      - "127.0.0.1:${ORCHESTRATOR_PORT:-8000}:8000"
+
+  postgres:
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+
+  llm-service:
+    ports:
+      - "127.0.0.1:${LLM_SERVICE_PORT:-8001}:8001"
+
+  normalizer-service:
+    ports:
+      - "127.0.0.1:${NORMALIZER_SERVICE_PORT:-8002}:8002"
+
+  calendar-service:
+    ports:
+      - "127.0.0.1:${CALENDAR_SERVICE_PORT:-8003}:8003"
+
+  extractor-service:
+    ports:
+      - "127.0.0.1:${EXTRACTOR_SERVICE_PORT:-8004}:8004"
+
+  validator-service:
+    ports:
+      - "127.0.0.1:${VALIDATOR_SERVICE_PORT:-8005}:8005"
+
+  ollama:
+    ports:
+      - "127.0.0.1:${OLLAMA_PORT:-11434}:11434"

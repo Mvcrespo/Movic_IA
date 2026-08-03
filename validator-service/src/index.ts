@@ -92,11 +92,45 @@ function resolveSchemaRepairAttempts(rawValue: string | undefined, fallback: num
   return Number.isInteger(parsed) && parsed >= 1 ? parsed : fallback;
 }
 
+function resolveBoolean(rawValue: string | undefined, fallback: boolean): boolean {
+  if (rawValue === undefined) {
+    return fallback;
+  }
+
+  return ["1", "true", "yes", "y", "on"].includes(rawValue.toLowerCase());
+}
+
+function isOllamaCloudUrl(baseUrl: string): boolean {
+  try {
+    const hostname = new URL(baseUrl).hostname.toLowerCase();
+    return hostname === "ollama.com" || hostname.endsWith(".ollama.com");
+  } catch {
+    return false;
+  }
+}
+
+function shouldSkipModelPreflight(baseUrl: string, apiKey: string): boolean {
+  return apiKey.trim().length > 0 && isOllamaCloudUrl(baseUrl);
+}
+
+const ollamaBaseUrl =
+  process.env.VALIDATOR_OLLAMA_BASE_URL ?? process.env.OLLAMA_BASE_URL ?? "http://ollama:11434";
+const ollamaApiKey =
+  process.env.VALIDATOR_OLLAMA_API_KEY ?? process.env.OLLAMA_API_KEY ?? "";
+
 const env = {
   port: Number(process.env.VALIDATOR_SERVICE_PORT ?? "8005"),
-  ollamaBaseUrl: process.env.OLLAMA_BASE_URL ?? "http://ollama:11434",
-  model: process.env.VALIDATOR_MODEL ?? process.env.OLLAMA_MODEL ?? "qwen2.5:3b",
-  autoPull: (process.env.VALIDATOR_AUTO_PULL ?? "true").toLowerCase() === "true",
+  ollamaBaseUrl,
+  model:
+    process.env.VALIDATOR_OLLAMA_MODEL ??
+    process.env.VALIDATOR_MODEL ??
+    process.env.OLLAMA_MODEL ??
+    "qwen2.5:3b",
+  ollamaApiKey,
+  autoPull: resolveBoolean(
+    process.env.VALIDATOR_OLLAMA_AUTO_PULL ?? process.env.VALIDATOR_AUTO_PULL,
+    !shouldSkipModelPreflight(ollamaBaseUrl, ollamaApiKey)
+  ),
   ollamaKeepAlive: process.env.OLLAMA_KEEP_ALIVE ?? "15m",
   schemaRepairAttempts: resolveSchemaRepairAttempts(
     process.env.VALIDATOR_SCHEMA_REPAIR_ATTEMPTS ?? process.env.OLLAMA_SCHEMA_REPAIR_ATTEMPTS,
@@ -258,11 +292,9 @@ async function requestStructuredJsonFromOllama<T>({
   const conversation = [...messages];
 
   for (let attempt = 1; attempt <= maxSchemaRepairAttempts; attempt += 1) {
-    const response = await fetch(`${env.ollamaBaseUrl.replace(/\/$/, "")}/api/chat`, {
+    const response = await fetch(getOllamaUrl("/api/chat"), {
       method: "POST",
-      headers: {
-        "content-type": "application/json"
-      },
+      headers: getOllamaHeaders(),
       body: JSON.stringify({
         model,
         stream: false,
@@ -382,6 +414,10 @@ function buildSystemPrompt(payload: ValidationRequest): string {
 }
 
 async function ensureModelAvailable(): Promise<void> {
+  if (shouldSkipModelPreflight(env.ollamaBaseUrl, env.ollamaApiKey)) {
+    return;
+  }
+
   if (!env.autoPull) {
     await waitForOllamaReady();
     return;
@@ -400,7 +436,9 @@ async function ensureModelAvailable(): Promise<void> {
 async function ensureModelAvailableOnce(): Promise<void> {
   await waitForOllamaReady();
 
-  const tagsResponse = await fetch(`${env.ollamaBaseUrl.replace(/\/$/, "")}/api/tags`);
+  const tagsResponse = await fetch(getOllamaUrl("/api/tags"), {
+    headers: getOllamaHeaders()
+  });
   if (!tagsResponse.ok) {
     const errorDetail = await getOllamaErrorDetail(tagsResponse);
     throw new Error(
@@ -419,11 +457,9 @@ async function ensureModelAvailableOnce(): Promise<void> {
     return;
   }
 
-  const pullResponse = await fetch(`${env.ollamaBaseUrl.replace(/\/$/, "")}/api/pull`, {
+  const pullResponse = await fetch(getOllamaUrl("/api/pull"), {
     method: "POST",
-    headers: {
-      "content-type": "application/json"
-    },
+    headers: getOllamaHeaders(),
     body: JSON.stringify({
       model: env.model,
       stream: false
@@ -443,7 +479,9 @@ async function waitForOllamaReady(): Promise<void> {
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
-      const response = await fetch(`${env.ollamaBaseUrl.replace(/\/$/, "")}/api/tags`);
+      const response = await fetch(getOllamaUrl("/api/tags"), {
+        headers: getOllamaHeaders()
+      });
       if (response.ok) {
         return;
       }
@@ -458,6 +496,23 @@ async function waitForOllamaReady(): Promise<void> {
   }
 
   throw new Error("O Ollama nao ficou pronto a tempo.");
+}
+
+function getOllamaUrl(path: string): string {
+  return `${env.ollamaBaseUrl.replace(/\/$/, "")}${path}`;
+}
+
+function getOllamaHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    "content-type": "application/json"
+  };
+  const apiKey = env.ollamaApiKey.trim();
+
+  if (apiKey) {
+    headers.authorization = `Bearer ${apiKey}`;
+  }
+
+  return headers;
 }
 
 async function getOllamaErrorDetail(response: Response): Promise<string> {
@@ -628,6 +683,10 @@ function validateEnv(): void {
 
   if (!env.ollamaBaseUrl) {
     throw new Error("OLLAMA_BASE_URL e obrigatoria.");
+  }
+
+  if (isOllamaCloudUrl(env.ollamaBaseUrl) && !env.ollamaApiKey.trim()) {
+    throw new Error("OLLAMA_API_KEY e obrigatoria quando OLLAMA_BASE_URL aponta para Ollama Cloud.");
   }
 
   if (!env.model) {

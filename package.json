@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "workspaces": [
     "discord",
+    "telegram",
     "dashboard",
     "apple-connector",
     "google-connector",
@@ -18,6 +19,7 @@
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "dev:gateway": "npm run dev --workspace discord-gateway",
+    "dev:telegram": "npm run dev --workspace telegram-gateway",
     "dev:dashboard": "npm run dev --workspace dashboard-service",
     "dev:apple": "npm run dev --workspace apple-connector",
     "dev:google": "npm run dev --workspace google-connector",
@@ -33,6 +35,7 @@
     "docker:logs": "docker compose logs -f",
     "eval:run": "node scripts/run-evals.mjs",
     "start:gateway": "npm run start --workspace discord-gateway",
+    "start:telegram": "npm run start --workspace telegram-gateway",
     "start:dashboard": "npm run start --workspace dashboard-service",
     "start:apple": "npm run start --workspace apple-connector",
     "start:google": "npm run start --workspace google-connector",

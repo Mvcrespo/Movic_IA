@@ -15,9 +15,13 @@ export type AppUser = {
 export type RuntimeSettings = {
   id: string;
   userId: string;
+  conversationPlatform: "discord" | "telegram";
   conversationChannelId: string | null;
   enabled: boolean;
+  isPrimary: boolean;
   updatedAt: string;
+  linkedUserId: string | null;
+  linkedUsername: string | null;
   linkedDiscordUserId: string | null;
   linkedDiscordUsername: string | null;
   linkedAt: string | null;
@@ -90,7 +94,25 @@ export type DiscordBotIdentity = {
   avatarUrl: string | null;
 };
 
-export type DashboardTab = "discord" | "apple" | "google" | "notion" | "users";
+export type SleepNotificationPreferences = {
+  userId: string;
+  enabled: boolean;
+  sleepStartTime: string | null;
+  sleepEndTime: string | null;
+  wakeStartTime: string | null;
+  wakeEndTime: string | null;
+  onboardingStep: "sleep" | "wake" | null;
+  lastEveningSentOn: string | null;
+  lastMorningSentOn: string | null;
+  updatedAt: string;
+};
+
+export type RuntimeChatLinks = {
+  discord: RuntimeSettings | null;
+  telegram: RuntimeSettings | null;
+};
+
+export type DashboardTab = "discord" | "telegram" | "apple" | "google" | "notion" | "users";
 
 export type FrontendContext =
   | {
@@ -139,10 +161,12 @@ export type FrontendContext =
         currentUser: AppUser;
         users: AppUser[];
         settings: RuntimeSettings | null;
+        chatLinks: RuntimeChatLinks;
         activeLinkCode: { code: string; expiresAt: string } | null;
         appleConnection: AppleCalendarConnection | null;
         googleConnection: GoogleCalendarConnection | null;
         notionConnection: NotionConnection | null;
+        notificationPreferences: SleepNotificationPreferences;
         botIdentity: DiscordBotIdentity | null;
         activeTab: DashboardTab;
         flashMessage: string | null;

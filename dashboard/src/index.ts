@@ -26,18 +26,45 @@ import {
   handlePublicAssetRequest as servePublicAssetRequest,
   renderFrontendPage
 } from "./frontend-shell.js";
+import { isValidNotionWebhookSignature } from "./notion-webhook-security.js";
 
 type RuntimeSettings = {
   id: string;
   userId: string;
+  conversationPlatform: "discord" | "telegram";
   conversationChannelId: string | null;
   enabled: boolean;
+  isPrimary: boolean;
   updatedAt: string;
+  linkedUserId: string | null;
+  linkedUsername: string | null;
   linkedDiscordUserId: string | null;
   linkedDiscordUsername: string | null;
   linkedAt: string | null;
   linkCode: string | null;
   linkCodeExpiresAt: string | null;
+};
+
+type RuntimeSettingsRow = {
+  id: string;
+  user_id: string;
+  conversation_platform: "discord" | "telegram";
+  conversation_channel_id: string | null;
+  enabled: boolean;
+  is_primary: boolean;
+  updated_at: string;
+  linked_user_id: string | null;
+  linked_username: string | null;
+  linked_discord_user_id: string | null;
+  linked_discord_username: string | null;
+  linked_at: string | null;
+  link_code: string | null;
+  link_code_expires_at: string | null;
+};
+
+type RuntimeChatLinks = {
+  discord: RuntimeSettings | null;
+  telegram: RuntimeSettings | null;
 };
 
 type AppleCalendarOption = {
@@ -106,26 +133,78 @@ type DiscordBotIdentity = {
   avatarUrl: string | null;
 };
 
+type SleepNotificationPreferences = {
+  userId: string;
+  enabled: boolean;
+  sleepStartTime: string | null;
+  sleepEndTime: string | null;
+  wakeStartTime: string | null;
+  wakeEndTime: string | null;
+  onboardingStep: "sleep" | "wake" | null;
+  lastEveningSentOn: string | null;
+  lastMorningSentOn: string | null;
+  updatedAt: string;
+};
+
+type SleepNotificationPreferencesRow = {
+  user_id: string;
+  enabled: boolean;
+  sleep_start_time: string | null;
+  sleep_end_time: string | null;
+  wake_start_time: string | null;
+  wake_end_time: string | null;
+  onboarding_step: "sleep" | "wake" | null;
+  last_evening_sent_on: string | null;
+  last_morning_sent_on: string | null;
+  updated_at: string;
+};
+
+type CalendarEventSummary = {
+  pageId: string;
+  title: string;
+  date: string;
+  endDate?: string;
+  startTime?: string;
+  endTime?: string;
+  allDay?: boolean;
+  description?: string;
+  category?: string;
+  userId?: string;
+};
+
 const env = {
   port: Number(process.env.DASHBOARD_PORT ?? "8088"),
   baseUrl: (process.env.DASHBOARD_BASE_URL ?? "http://localhost:8088").replace(/\/$/, ""),
   contactEmail: process.env.PUBLIC_CONTACT_EMAIL ?? "",
   orchestratorUrl: process.env.ORCHESTRATOR_URL ?? "http://orchestrator:8000",
   calendarServiceUrl: process.env.CALENDAR_SERVICE_URL ?? "http://calendar-service:8003",
+  discordGatewayUrl: process.env.DISCORD_GATEWAY_URL ?? "http://gateway:8010",
+  telegramGatewayUrl: process.env.TELEGRAM_GATEWAY_URL ?? "http://telegram-gateway:8011",
   appleConnectorUrl: process.env.APPLE_CONNECTOR_URL ?? "http://apple-connector:8006",
   googleConnectorUrl: process.env.GOOGLE_CONNECTOR_URL ?? "http://google-connector:8007",
   notionConnectorUrl: process.env.NOTION_CONNECTOR_URL ?? "http://notion-connector:8008",
-  postgresUrl:
-    process.env.CONFIG_POSTGRES_URL ??
-    "postgres://agentpulse_config:agentpulse_config_password@config-postgres:5432/agentpulse_config",
-  internalApiToken:
-    process.env.DASHBOARD_INTERNAL_API_TOKEN ?? "pulse_dashboard_internal_token_change_me",
+  postgresUrl: process.env.CONFIG_POSTGRES_URL ?? "",
+  internalApiToken: process.env.DASHBOARD_INTERNAL_API_TOKEN ?? "",
+  notionWebhookVerificationToken: process.env.NOTION_WEBHOOK_VERIFICATION_TOKEN ?? "",
   discordToken: process.env.DISCORD_TOKEN ?? "",
   timezone: process.env.APP_TIMEZONE ?? "Europe/Lisbon",
   configEncryptionKey: process.env.CONFIG_ENCRYPTION_KEY ?? "",
   defaultAdminEmail: process.env.DEFAULT_ADMIN_EMAIL ?? "",
   defaultAdminPassword: process.env.DEFAULT_ADMIN_PASSWORD ?? ""
 };
+
+const NOTIFICATION_SCHEDULER_INTERVAL_MS = 60 * 1000;
+const MAX_REQUEST_BODY_BYTES = 1024 * 1024;
+const MAX_NOTION_WEBHOOK_BODY_BYTES = 256 * 1024;
+
+class HttpError extends Error {
+  statusCode: number;
+
+  constructor(statusCode: number, message: string) {
+    super(message);
+    this.statusCode = statusCode;
+  }
+}
 
 validateEnv();
 
@@ -181,23 +260,16 @@ const server = createServer(async (request, response) => {
       return handleLinkCodeClaimRequest(request, response);
     }
 
+    if (method === "POST" && path === "/api/notification-preferences/chat-message") {
+      return handleNotificationPreferenceChatMessageRequest(request, response);
+    }
+
     if (method === "GET" && path === "/") {
       if (currentUser) {
         return redirect(response, currentUser.mustChangePassword ? "/change-password" : "/dashboard");
       }
 
-      return writeHtml(
-        response,
-        200,
-        renderFrontendPage({
-          title: "Movic",
-          page: "home",
-          payload: {
-            contactEmail: getMarketingContactEmail(),
-            isAuthenticated: false
-          }
-        })
-      );
+      return redirect(response, "/home");
     }
 
     if (method === "GET" && path === "/home") {
@@ -347,11 +419,19 @@ const server = createServer(async (request, response) => {
     }
 
     if (method === "GET" && path === "/dashboard") {
+      const requestedChatPlatform = parseConversationPlatform(requestUrl.searchParams.get("tab"));
+      const chatLinks = await getRuntimeChatLinks(currentUser!.id);
       const settings = await getRuntimeSettings(currentUser!.id);
-      const activeLinkCode = await ensureActiveLinkCode(currentUser!.id, settings);
+      const activePlatformSettings = chatLinks[requestedChatPlatform];
+      const activeLinkCode = await ensureActiveLinkCode(
+        currentUser!.id,
+        requestedChatPlatform,
+        activePlatformSettings
+      );
       const appleConnection = await getAppleCalendarConnection(currentUser!.id);
       const googleConnection = await getGoogleCalendarConnection(currentUser!.id);
       const notionConnection = await getNotionConnection(currentUser!.id);
+      const notificationPreferences = await ensureSleepNotificationPreferences(currentUser!.id);
       const botIdentity = await getDiscordBotIdentity();
       const users = currentUser!.role === "admin" ? await listUsers(pool) : [];
       return writeHtml(
@@ -361,10 +441,12 @@ const server = createServer(async (request, response) => {
           currentUser!,
           users,
           settings,
+          chatLinks,
           activeLinkCode,
           appleConnection,
           googleConnection,
           notionConnection,
+          notificationPreferences,
           botIdentity,
           requestUrl.searchParams
         )
@@ -372,13 +454,36 @@ const server = createServer(async (request, response) => {
     }
 
     if (method === "POST" && path === "/dashboard/generate-code") {
-      await rotateLinkCode(currentUser!.id);
-      return redirect(response, "/dashboard?generated=1");
+      const body = parseFormBody(await readBody(request));
+      const platform = parseConversationPlatform(body.platform);
+      await rotateLinkCode(currentUser!.id, platform);
+      return redirect(response, `/dashboard?tab=${platform}&generated=1`);
     }
 
     if (method === "POST" && path === "/dashboard/unlink") {
-      await unlinkCurrentChat(currentUser!.id);
-      return redirect(response, "/dashboard?unlinked=1");
+      const body = parseFormBody(await readBody(request));
+      const platform = parseConversationPlatform(body.platform);
+      await unlinkChat(currentUser!.id, platform);
+      return redirect(response, `/dashboard?tab=${platform}&unlinked=1`);
+    }
+
+    if (method === "POST" && path === "/dashboard/chat-primary") {
+      const body = parseFormBody(await readBody(request));
+      const platform = parseConversationPlatform(body.platform);
+      await setPrimaryChat(currentUser!.id, platform);
+      return redirect(response, `/dashboard?tab=${platform}&primaryChanged=1`);
+    }
+
+    if (method === "POST" && path === "/dashboard/notification-preferences") {
+      const body = parseFormBody(await readBody(request));
+      await saveSleepNotificationPreferencesFromDashboard(currentUser!.id, {
+        enabled: body.notificationsEnabled === "on",
+        sleepStartTime: normalizeClockInput(body.sleepStartTime ?? ""),
+        sleepEndTime: normalizeClockInput(body.sleepEndTime ?? ""),
+        wakeStartTime: normalizeClockInput(body.wakeStartTime ?? ""),
+        wakeEndTime: normalizeClockInput(body.wakeEndTime ?? "")
+      });
+      return redirect(response, "/dashboard?tab=discord&notificationPrefsSaved=1");
     }
 
     if (method === "POST" && path === "/dashboard/apple/test") {
@@ -718,7 +823,8 @@ const server = createServer(async (request, response) => {
     }
 
     if (method === "POST" && path === "/webhooks/notion") {
-      const rawBody = await readBody(request);
+      const rawBody = await readBody(request, MAX_NOTION_WEBHOOK_BODY_BYTES);
+      verifyNotionWebhookSignature(rawBody, request.headers["x-notion-signature"]);
       await forwardNotionWebhook(rawBody, request.headers);
       return writeJson(response, 200, { success: true });
     }
@@ -730,12 +836,20 @@ const server = createServer(async (request, response) => {
     writeHtml(response, 404, renderNotFoundVuePage());
   } catch (error) {
     console.error("[dashboard-service] Erro:", error);
+    if (error instanceof HttpError) {
+      return writeJson(response, error.statusCode, {
+        success: false,
+        error: error.message
+      });
+    }
+
     writeHtml(response, 500, renderErrorVuePage());
   }
 });
 
 server.listen(env.port, () => {
   console.log(`[dashboard-service] A escutar na porta ${env.port}`);
+  startNotificationScheduler();
 });
 
 async function handleRuntimeConfigRequest(
@@ -771,9 +885,10 @@ async function handleRuntimeConfigResolveRequest(
   }
 
   const channelId = sanitizeText(requestUrl.searchParams.get("channelId"));
-  const discordUserId = sanitizeText(requestUrl.searchParams.get("userId"));
+  const externalUserId = sanitizeText(requestUrl.searchParams.get("userId"));
+  const platform = parseConversationPlatform(requestUrl.searchParams.get("platform"));
 
-  if (!channelId || !discordUserId) {
+  if (!channelId || !externalUserId) {
     writeJson(response, 400, {
       success: false,
       error: "Pedido incompleto."
@@ -781,8 +896,8 @@ async function handleRuntimeConfigResolveRequest(
     return;
   }
 
-  const settings = await getRuntimeSettingsByLinkedConversation(channelId, discordUserId);
-  const configured = Boolean(settings?.enabled && settings.conversationChannelId && settings.linkedDiscordUserId);
+  const settings = await getRuntimeSettingsByLinkedConversation(platform, channelId, externalUserId);
+  const configured = Boolean(settings?.enabled && settings.conversationChannelId && settings.linkedUserId);
 
   writeJson(response, 200, {
     success: true,
@@ -790,9 +905,11 @@ async function handleRuntimeConfigResolveRequest(
     config: configured
       ? {
           dashboardUserId: settings?.userId,
+          platform: settings?.conversationPlatform,
           channelId: settings?.conversationChannelId,
-          userId: settings?.linkedDiscordUserId,
-          username: settings?.linkedDiscordUsername,
+          userId: settings?.linkedUserId,
+          username: settings?.linkedUsername,
+          isPrimary: settings?.isPrimary,
           linkedAt: settings?.linkedAt
         }
       : null
@@ -814,6 +931,7 @@ async function handleLinkCodeClaimRequest(
   const payload = safeJsonParse(await readBody(request)) as
     | {
         code?: string;
+        platform?: string;
         userId?: string;
         username?: string;
         channelId?: string;
@@ -821,6 +939,7 @@ async function handleLinkCodeClaimRequest(
     | null;
 
   const code = normalizeLinkCode(payload?.code ?? "");
+  const platform = parseConversationPlatform(payload?.platform);
   const userId = sanitizeText(payload?.userId ?? null);
   const username = sanitizeText(payload?.username ?? null);
   const channelId = sanitizeText(payload?.channelId ?? null);
@@ -843,18 +962,28 @@ async function handleLinkCodeClaimRequest(
     return;
   }
 
-  if (settings?.enabled && settings.conversationChannelId && settings.linkedDiscordUserId) {
+  if (
+    settings?.enabled &&
+    settings.conversationPlatform === platform &&
+    settings.conversationChannelId &&
+    settings.linkedUserId
+  ) {
     if (
+      settings.conversationPlatform === platform &&
       settings.conversationChannelId === channelId &&
-      settings.linkedDiscordUserId === userId
+      settings.linkedUserId === userId
     ) {
+      const preferences = await ensureSleepNotificationPreferences(settings.userId);
       writeJson(response, 200, {
         success: true,
         alreadyLinked: true,
+        setupPrompt: buildSleepPreferenceLinkPrompt(preferences),
         config: {
+          platform: settings.conversationPlatform,
           channelId: settings.conversationChannelId,
-          userId: settings.linkedDiscordUserId,
-          username: settings.linkedDiscordUsername,
+          userId: settings.linkedUserId,
+          username: settings.linkedUsername,
+          isPrimary: settings.isPrimary,
           linkedAt: settings.linkedAt
         }
       });
@@ -886,42 +1015,40 @@ async function handleLinkCodeClaimRequest(
 
   const linked = await claimLinkCode({
     settingsId: settings.id,
+    platform,
     channelId,
     userId,
     username
   });
+  const preferences = await prepareSleepNotificationOnboarding(linked.userId);
 
   writeJson(response, 200, {
     success: true,
+    setupPrompt: buildSleepPreferenceLinkPrompt(preferences),
     config: {
+      platform: linked.conversationPlatform,
       channelId: linked.conversationChannelId,
-      userId: linked.linkedDiscordUserId,
-      username: linked.linkedDiscordUsername,
+      userId: linked.linkedUserId,
+      username: linked.linkedUsername,
+      isPrimary: linked.isPrimary,
       linkedAt: linked.linkedAt
     }
   });
 }
 
 async function getRuntimeSettings(userId: string): Promise<RuntimeSettings | null> {
-  const result = await pool.query<{
-    id: string;
-    user_id: string;
-    conversation_channel_id: string | null;
-    enabled: boolean;
-    updated_at: string;
-    linked_discord_user_id: string | null;
-    linked_discord_username: string | null;
-    linked_at: string | null;
-    link_code: string | null;
-    link_code_expires_at: string | null;
-  }>(
+  const result = await pool.query<RuntimeSettingsRow>(
     `
       SELECT
         id,
         user_id,
+        COALESCE(conversation_platform, 'discord') AS conversation_platform,
         conversation_channel_id,
         enabled,
+        is_primary,
         updated_at,
+        linked_user_id,
+        linked_username,
         linked_discord_user_id,
         linked_discord_username,
         linked_at,
@@ -929,7 +1056,7 @@ async function getRuntimeSettings(userId: string): Promise<RuntimeSettings | nul
         link_code_expires_at
       FROM dashboard_runtime_settings
       WHERE user_id = $1
-      ORDER BY updated_at DESC
+      ORDER BY is_primary DESC, enabled DESC, updated_at DESC
       LIMIT 1
     `,
     [userId]
@@ -940,43 +1067,69 @@ async function getRuntimeSettings(userId: string): Promise<RuntimeSettings | nul
     return null;
   }
 
-  return {
-    id: row.id,
-    userId: row.user_id,
-    conversationChannelId: row.conversation_channel_id,
-    enabled: row.enabled,
-    updatedAt: row.updated_at,
-    linkedDiscordUserId: row.linked_discord_user_id,
-    linkedDiscordUsername: row.linked_discord_username,
-    linkedAt: row.linked_at,
-    linkCode: row.link_code,
-    linkCodeExpiresAt: row.link_code_expires_at
-  };
+  return mapRuntimeSettingsRow(row);
 }
 
-async function getRuntimeSettingsByLinkedConversation(
-  channelId: string,
-  discordUserId: string
+async function getRuntimeSettingsForPlatform(
+  userId: string,
+  platform: "discord" | "telegram"
 ): Promise<RuntimeSettings | null> {
-  const result = await pool.query<{
-    id: string;
-    user_id: string;
-    conversation_channel_id: string | null;
-    enabled: boolean;
-    updated_at: string;
-    linked_discord_user_id: string | null;
-    linked_discord_username: string | null;
-    linked_at: string | null;
-    link_code: string | null;
-    link_code_expires_at: string | null;
-  }>(
+  const result = await pool.query<RuntimeSettingsRow>(
     `
       SELECT
         id,
         user_id,
+        COALESCE(conversation_platform, 'discord') AS conversation_platform,
         conversation_channel_id,
         enabled,
+        is_primary,
         updated_at,
+        linked_user_id,
+        linked_username,
+        linked_discord_user_id,
+        linked_discord_username,
+        linked_at,
+        link_code,
+        link_code_expires_at
+      FROM dashboard_runtime_settings
+      WHERE user_id = $1
+        AND COALESCE(conversation_platform, 'discord') = $2
+      ORDER BY updated_at DESC
+      LIMIT 1
+    `,
+    [userId, platform]
+  );
+
+  const row = result.rows[0];
+  return row ? mapRuntimeSettingsRow(row) : null;
+}
+
+async function getRuntimeChatLinks(userId: string): Promise<RuntimeChatLinks> {
+  const [discord, telegram] = await Promise.all([
+    getRuntimeSettingsForPlatform(userId, "discord"),
+    getRuntimeSettingsForPlatform(userId, "telegram")
+  ]);
+
+  return { discord, telegram };
+}
+
+async function getRuntimeSettingsByLinkedConversation(
+  platform: "discord" | "telegram",
+  channelId: string,
+  externalUserId: string
+): Promise<RuntimeSettings | null> {
+  const result = await pool.query<RuntimeSettingsRow>(
+    `
+      SELECT
+        id,
+        user_id,
+        COALESCE(conversation_platform, 'discord') AS conversation_platform,
+        conversation_channel_id,
+        enabled,
+        is_primary,
+        updated_at,
+        linked_user_id,
+        linked_username,
         linked_discord_user_id,
         linked_discord_username,
         linked_at,
@@ -984,12 +1137,13 @@ async function getRuntimeSettingsByLinkedConversation(
         link_code_expires_at
       FROM dashboard_runtime_settings
       WHERE enabled = TRUE
-        AND conversation_channel_id = $1
-        AND linked_discord_user_id = $2
+        AND COALESCE(conversation_platform, 'discord') = $1
+        AND conversation_channel_id = $2
+        AND COALESCE(linked_user_id, linked_discord_user_id) = $3
       ORDER BY updated_at DESC
       LIMIT 1
     `,
-    [channelId, discordUserId]
+    [platform, channelId, externalUserId]
   );
 
   const row = result.rows[0];
@@ -997,40 +1151,22 @@ async function getRuntimeSettingsByLinkedConversation(
     return null;
   }
 
-  return {
-    id: row.id,
-    userId: row.user_id,
-    conversationChannelId: row.conversation_channel_id,
-    enabled: row.enabled,
-    updatedAt: row.updated_at,
-    linkedDiscordUserId: row.linked_discord_user_id,
-    linkedDiscordUsername: row.linked_discord_username,
-    linkedAt: row.linked_at,
-    linkCode: row.link_code,
-    linkCodeExpiresAt: row.link_code_expires_at
-  };
+  return mapRuntimeSettingsRow(row);
 }
 
 async function getRuntimeSettingsByLinkCode(code: string): Promise<RuntimeSettings | null> {
-  const result = await pool.query<{
-    id: string;
-    user_id: string;
-    conversation_channel_id: string | null;
-    enabled: boolean;
-    updated_at: string;
-    linked_discord_user_id: string | null;
-    linked_discord_username: string | null;
-    linked_at: string | null;
-    link_code: string | null;
-    link_code_expires_at: string | null;
-  }>(
+  const result = await pool.query<RuntimeSettingsRow>(
     `
       SELECT
         id,
         user_id,
+        COALESCE(conversation_platform, 'discord') AS conversation_platform,
         conversation_channel_id,
         enabled,
+        is_primary,
         updated_at,
+        linked_user_id,
+        linked_username,
         linked_discord_user_id,
         linked_discord_username,
         linked_at,
@@ -1049,22 +1185,41 @@ async function getRuntimeSettingsByLinkCode(code: string): Promise<RuntimeSettin
     return null;
   }
 
+  return mapRuntimeSettingsRow(row);
+}
+
+function mapRuntimeSettingsRow(row: RuntimeSettingsRow): RuntimeSettings {
+  const platform = row.conversation_platform === "telegram" ? "telegram" : "discord";
+  const linkedUserId = row.linked_user_id ?? row.linked_discord_user_id;
+  const linkedUsername = row.linked_username ?? row.linked_discord_username;
+
   return {
     id: row.id,
     userId: row.user_id,
+    conversationPlatform: platform,
     conversationChannelId: row.conversation_channel_id,
     enabled: row.enabled,
+    isPrimary: row.is_primary,
     updatedAt: row.updated_at,
-    linkedDiscordUserId: row.linked_discord_user_id,
-    linkedDiscordUsername: row.linked_discord_username,
+    linkedUserId,
+    linkedUsername,
+    linkedDiscordUserId: row.linked_discord_user_id ?? linkedUserId,
+    linkedDiscordUsername: row.linked_discord_username ?? linkedUsername,
     linkedAt: row.linked_at,
     linkCode: row.link_code,
     linkCodeExpiresAt: row.link_code_expires_at
   };
 }
 
-async function ensureRuntimeSettingsRow(userId: string): Promise<RuntimeSettings> {
-  const existing = await getRuntimeSettings(userId);
+function parseConversationPlatform(value: string | null | undefined): "discord" | "telegram" {
+  return value === "telegram" ? "telegram" : "discord";
+}
+
+async function ensureRuntimeSettingsRow(
+  userId: string,
+  platform: "discord" | "telegram" = "discord"
+): Promise<RuntimeSettings> {
+  const existing = await getRuntimeSettingsForPlatform(userId, platform);
   if (existing) {
     return existing;
   }
@@ -1075,15 +1230,16 @@ async function ensureRuntimeSettingsRow(userId: string): Promise<RuntimeSettings
       INSERT INTO dashboard_runtime_settings (
         id,
         user_id,
+        conversation_platform,
         conversation_channel_id,
         enabled
       )
-      VALUES ($1, $2, NULL, FALSE)
+      VALUES ($1, $2, $3, NULL, FALSE)
     `,
-    [id, userId]
+    [id, userId, platform]
   );
 
-  const created = await getRuntimeSettings(userId);
+  const created = await getRuntimeSettingsForPlatform(userId, platform);
   if (!created) {
     throw new Error("Não foi possível inicializar a configuração da dashboard.");
   }
@@ -1093,11 +1249,12 @@ async function ensureRuntimeSettingsRow(userId: string): Promise<RuntimeSettings
 
 async function ensureActiveLinkCode(
   userId: string,
+  platform: "discord" | "telegram",
   settings: RuntimeSettings | null
 ): Promise<{ code: string; expiresAt: string } | null> {
-  const row = settings ?? (await ensureRuntimeSettingsRow(userId));
+  const row = settings ?? (await ensureRuntimeSettingsRow(userId, platform));
 
-  if (row.enabled && row.conversationChannelId && row.linkedDiscordUserId) {
+  if (row.enabled && row.conversationChannelId && row.linkedUserId) {
     return null;
   }
 
@@ -1111,14 +1268,17 @@ async function ensureActiveLinkCode(
     }
   }
 
-  return rotateLinkCode(userId, row.id);
+  return rotateLinkCode(userId, platform, row.id);
 }
 
 async function rotateLinkCode(
   userId: string,
+  platform: "discord" | "telegram" = "discord",
   existingId?: string
 ): Promise<{ code: string; expiresAt: string }> {
-  const row = existingId ? await getRuntimeSettings(userId) : await ensureRuntimeSettingsRow(userId);
+  const row = existingId
+    ? await getRuntimeSettingsForPlatform(userId, platform)
+    : await ensureRuntimeSettingsRow(userId, platform);
   const id = existingId ?? row?.id;
 
   if (!id) {
@@ -1148,6 +1308,7 @@ async function rotateLinkCode(
 
 async function claimLinkCode(input: {
   settingsId: string;
+  platform: "discord" | "telegram";
   channelId: string;
   userId: string;
   username: string | null;
@@ -1156,20 +1317,34 @@ async function claimLinkCode(input: {
     `
       UPDATE dashboard_runtime_settings
       SET
-        conversation_channel_id = $2,
+        conversation_platform = $2,
+        conversation_channel_id = $3,
         enabled = TRUE,
-        linked_discord_user_id = $3,
-        linked_discord_username = $4,
+        is_primary = CASE
+          WHEN is_primary = TRUE THEN TRUE
+          WHEN NOT EXISTS (
+            SELECT 1
+            FROM dashboard_runtime_settings existing_primary
+            WHERE existing_primary.user_id = dashboard_runtime_settings.user_id
+              AND existing_primary.is_primary = TRUE
+              AND existing_primary.id <> $1
+          ) THEN TRUE
+          ELSE FALSE
+        END,
+        linked_user_id = $4,
+        linked_username = $5,
+        linked_discord_user_id = CASE WHEN $2 = 'discord' THEN $4 ELSE linked_discord_user_id END,
+        linked_discord_username = CASE WHEN $2 = 'discord' THEN $5 ELSE linked_discord_username END,
         linked_at = NOW(),
         link_code = NULL,
         link_code_expires_at = NULL,
         updated_at = NOW()
       WHERE id = $1
     `,
-    [input.settingsId, input.channelId, input.userId, input.username]
+    [input.settingsId, input.platform, input.channelId, input.userId, input.username]
   );
 
-  const updated = await getRuntimeSettingsByLinkedConversation(input.channelId, input.userId);
+  const updated = await getRuntimeSettingsByLinkedConversation(input.platform, input.channelId, input.userId);
   if (!updated) {
     throw new Error("Não foi possível concluir a ligação do chat.");
   }
@@ -1177,8 +1352,9 @@ async function claimLinkCode(input: {
   return updated;
 }
 
-async function unlinkCurrentChat(userId: string): Promise<void> {
-  const row = await ensureRuntimeSettingsRow(userId);
+async function unlinkChat(userId: string, platform: "discord" | "telegram"): Promise<void> {
+  const row = await ensureRuntimeSettingsRow(userId, platform);
+  const wasPrimary = row.isPrimary;
 
   await pool.query(
     `
@@ -1186,8 +1362,11 @@ async function unlinkCurrentChat(userId: string): Promise<void> {
       SET
         conversation_channel_id = NULL,
         enabled = FALSE,
-        linked_discord_user_id = NULL,
-        linked_discord_username = NULL,
+        is_primary = FALSE,
+        linked_user_id = NULL,
+        linked_username = NULL,
+        linked_discord_user_id = CASE WHEN conversation_platform = 'discord' THEN NULL ELSE linked_discord_user_id END,
+        linked_discord_username = CASE WHEN conversation_platform = 'discord' THEN NULL ELSE linked_discord_username END,
         linked_at = NULL,
         updated_at = NOW()
       WHERE id = $1
@@ -1195,7 +1374,771 @@ async function unlinkCurrentChat(userId: string): Promise<void> {
     [row.id]
   );
 
-  await rotateLinkCode(userId, row.id);
+  if (wasPrimary) {
+    await promoteFallbackPrimaryChat(userId);
+  }
+
+  await rotateLinkCode(userId, platform, row.id);
+}
+
+async function setPrimaryChat(userId: string, platform: "discord" | "telegram"): Promise<void> {
+  const row = await getRuntimeSettingsForPlatform(userId, platform);
+  if (!row?.enabled || !row.conversationChannelId || !row.linkedUserId) {
+    throw new Error("Liga primeiro esse chat antes de o marcares como principal.");
+  }
+
+  await pool.query(
+    `
+      UPDATE dashboard_runtime_settings
+      SET
+        is_primary = CASE WHEN id = $2 THEN TRUE ELSE FALSE END,
+        updated_at = CASE WHEN id = $2 THEN NOW() ELSE updated_at END
+      WHERE user_id = $1
+    `,
+    [userId, row.id]
+  );
+}
+
+async function promoteFallbackPrimaryChat(userId: string): Promise<void> {
+  await pool.query(
+    `
+      UPDATE dashboard_runtime_settings
+      SET is_primary = TRUE, updated_at = NOW()
+      WHERE id = (
+        SELECT id
+        FROM dashboard_runtime_settings
+        WHERE user_id = $1
+          AND enabled = TRUE
+          AND conversation_channel_id IS NOT NULL
+          AND linked_user_id IS NOT NULL
+        ORDER BY updated_at DESC
+        LIMIT 1
+      )
+    `,
+    [userId]
+  );
+}
+
+async function handleNotificationPreferenceChatMessageRequest(
+  request: IncomingMessage,
+  response: ServerResponse
+): Promise<void> {
+  if (!isAuthorizedInternalRequest(request)) {
+    writeJson(response, 401, {
+      success: false,
+      error: "Nao autorizado."
+    });
+    return;
+  }
+
+  const payload = safeJsonParse(await readBody(request)) as
+    | {
+        platform?: string;
+        channelId?: string;
+        userId?: string;
+        text?: string;
+      }
+    | null;
+
+  const platform = parseConversationPlatform(payload?.platform);
+  const channelId = sanitizeText(payload?.channelId ?? null);
+  const externalUserId = sanitizeText(payload?.userId ?? null);
+  const text = sanitizeText(payload?.text ?? null);
+
+  if (!channelId || !externalUserId || !text) {
+    writeJson(response, 400, {
+      success: false,
+      error: "Pedido incompleto."
+    });
+    return;
+  }
+
+  const settings = await getRuntimeSettingsByLinkedConversation(platform, channelId, externalUserId);
+  if (!settings?.enabled) {
+    writeJson(response, 200, { success: true, handled: false });
+    return;
+  }
+
+  const result = await handleSleepPreferenceChatText(settings.userId, text);
+  writeJson(response, 200, {
+    success: true,
+    ...result
+  });
+}
+
+async function handleSleepPreferenceChatText(
+  userId: string,
+  text: string
+): Promise<{ handled: boolean; reply?: string }> {
+  const preferences = await ensureSleepNotificationPreferences(userId);
+  const normalized = normalizeLooseText(text);
+  const ranges = parseSleepWakeRanges(text);
+  const range = parseTimeRange(text);
+  const wantsStatus =
+    /\b(horarios?|notificacoes?|notificações|sono|dormir|acordar)\b/.test(normalized) &&
+    /\b(ver|mostrar|quais|estado|status|config)\b/.test(normalized);
+
+  if (/\b(desativar|desligar|parar|off)\b/.test(normalized) && /\b(notificacoes?|notificações|avisos?)\b/.test(normalized)) {
+    await setSleepNotificationsEnabled(userId, false);
+    return {
+      handled: true,
+      reply: "Combinado. Desativei os avisos automaticos de noite e de manha. Podes voltar a ligar com `notificacoes on`."
+    };
+  }
+
+  if (/\b(ativar|ligar|on)\b/.test(normalized) && /\b(notificacoes?|notificações|avisos?)\b/.test(normalized)) {
+    await setSleepNotificationsEnabled(userId, true);
+    const updated = await ensureSleepNotificationPreferences(userId);
+    return {
+      handled: true,
+      reply: buildSleepPreferenceLinkPrompt(updated)
+    };
+  }
+
+  if (wantsStatus) {
+    return {
+      handled: true,
+      reply: buildSleepPreferenceStatusMessage(preferences)
+    };
+  }
+
+  // Mensagens de calendario (marcar/criar/agendar/apagar eventos) tem prioridade:
+  // nao as tratamos como preferencias de notificacao, mesmo que contenham um
+  // intervalo horario ou palavras como "manha" (ex.: "marca amanha ... das 8 as 9").
+  // Deixamos seguir para o orquestrador tratar como evento.
+  if (
+    /\b(marca|marcar|marque|agenda|agendar|agende|cria|criar|adiciona|adicionar|regista|registar|remarca|remarcar|apaga|apagar|cancela|cancelar)\b/.test(
+      normalized
+    )
+  ) {
+    return { handled: false };
+  }
+
+  if (ranges.sleep || ranges.wake) {
+    if (ranges.sleep) {
+      await updateSleepRange(userId, ranges.sleep.start, ranges.sleep.end);
+    }
+
+    if (ranges.wake) {
+      await updateWakeRange(userId, ranges.wake.start, ranges.wake.end);
+    }
+
+    const updated = await ensureSleepNotificationPreferences(userId);
+    return {
+      handled: true,
+      reply:
+        ranges.sleep && ranges.wake
+          ? buildSleepPreferenceStatusMessage(updated)
+          : buildSleepPreferenceLinkPrompt(updated)
+    };
+  }
+
+  if (!range) {
+    return { handled: false };
+  }
+
+  const isWakeText = /\b(acord|levantar|manha|manhã)\b/.test(normalized);
+  const isSleepText = /\b(sono|dormir|deitar|noite)\b/.test(normalized);
+  const target =
+    isWakeText || preferences.onboardingStep === "wake"
+      ? "wake"
+      : isSleepText || preferences.onboardingStep === "sleep"
+        ? "sleep"
+        : null;
+
+  if (!target) {
+    return { handled: false };
+  }
+
+  if (target === "sleep") {
+    await updateSleepRange(userId, range.start, range.end);
+    const updated = await ensureSleepNotificationPreferences(userId);
+    return {
+      handled: true,
+      reply: updated.wakeStartTime && updated.wakeEndTime
+        ? buildSleepPreferenceStatusMessage(updated)
+        : "Perfeito. Guardei o intervalo de deitar. Agora diz-me o intervalo em que costumas acordar, por exemplo: `acordar 07-09`."
+    };
+  }
+
+  await updateWakeRange(userId, range.start, range.end);
+  const updated = await ensureSleepNotificationPreferences(userId);
+  return {
+    handled: true,
+    reply: buildSleepPreferenceStatusMessage(updated)
+  };
+}
+
+async function ensureSleepNotificationPreferences(userId: string): Promise<SleepNotificationPreferences> {
+  const existing = await getSleepNotificationPreferences(userId);
+  if (existing) {
+    return existing;
+  }
+
+  await pool.query(
+    `
+      INSERT INTO sleep_notification_preferences (user_id, enabled, onboarding_step)
+      VALUES ($1, TRUE, 'sleep')
+      ON CONFLICT (user_id) DO NOTHING
+    `,
+    [userId]
+  );
+
+  const created = await getSleepNotificationPreferences(userId);
+  if (!created) {
+    throw new Error("Nao foi possivel inicializar as preferencias de notificacao.");
+  }
+
+  return created;
+}
+
+async function prepareSleepNotificationOnboarding(userId: string): Promise<SleepNotificationPreferences> {
+  const preferences = await ensureSleepNotificationPreferences(userId);
+  const nextStep =
+    !preferences.sleepStartTime || !preferences.sleepEndTime
+      ? "sleep"
+      : !preferences.wakeStartTime || !preferences.wakeEndTime
+        ? "wake"
+        : null;
+
+  if (preferences.onboardingStep !== nextStep) {
+    await pool.query(
+      `
+        UPDATE sleep_notification_preferences
+        SET onboarding_step = $2, updated_at = NOW()
+        WHERE user_id = $1
+      `,
+      [userId, nextStep]
+    );
+  }
+
+  return (await getSleepNotificationPreferences(userId)) ?? preferences;
+}
+
+async function getSleepNotificationPreferences(
+  userId: string
+): Promise<SleepNotificationPreferences | null> {
+  const result = await pool.query<SleepNotificationPreferencesRow>(
+    `
+      SELECT
+        user_id,
+        enabled,
+        sleep_start_time,
+        sleep_end_time,
+        wake_start_time,
+        wake_end_time,
+        onboarding_step,
+        last_evening_sent_on::text AS last_evening_sent_on,
+        last_morning_sent_on::text AS last_morning_sent_on,
+        updated_at
+      FROM sleep_notification_preferences
+      WHERE user_id = $1
+      LIMIT 1
+    `,
+    [userId]
+  );
+
+  const row = result.rows[0];
+  return row ? mapSleepNotificationPreferencesRow(row) : null;
+}
+
+function mapSleepNotificationPreferencesRow(
+  row: SleepNotificationPreferencesRow
+): SleepNotificationPreferences {
+  return {
+    userId: row.user_id,
+    enabled: row.enabled,
+    sleepStartTime: normalizeClockInput(row.sleep_start_time ?? ""),
+    sleepEndTime: normalizeClockInput(row.sleep_end_time ?? ""),
+    wakeStartTime: normalizeClockInput(row.wake_start_time ?? ""),
+    wakeEndTime: normalizeClockInput(row.wake_end_time ?? ""),
+    onboardingStep: row.onboarding_step === "wake" || row.onboarding_step === "sleep" ? row.onboarding_step : null,
+    lastEveningSentOn: row.last_evening_sent_on,
+    lastMorningSentOn: row.last_morning_sent_on,
+    updatedAt: row.updated_at
+  };
+}
+
+async function updateSleepRange(userId: string, start: string, end: string): Promise<void> {
+  await pool.query(
+    `
+      UPDATE sleep_notification_preferences
+      SET
+        enabled = TRUE,
+        sleep_start_time = $2,
+        sleep_end_time = $3,
+        onboarding_step = CASE
+          WHEN wake_start_time IS NULL OR wake_end_time IS NULL THEN 'wake'
+          ELSE NULL
+        END,
+        updated_at = NOW()
+      WHERE user_id = $1
+    `,
+    [userId, start, end]
+  );
+}
+
+async function updateWakeRange(userId: string, start: string, end: string): Promise<void> {
+  await pool.query(
+    `
+      UPDATE sleep_notification_preferences
+      SET
+        enabled = TRUE,
+        wake_start_time = $2,
+        wake_end_time = $3,
+        onboarding_step = CASE
+          WHEN sleep_start_time IS NULL OR sleep_end_time IS NULL THEN 'sleep'
+          ELSE NULL
+        END,
+        updated_at = NOW()
+      WHERE user_id = $1
+    `,
+    [userId, start, end]
+  );
+}
+
+async function setSleepNotificationsEnabled(userId: string, enabled: boolean): Promise<void> {
+  await ensureSleepNotificationPreferences(userId);
+  await pool.query(
+    `
+      UPDATE sleep_notification_preferences
+      SET enabled = $2, updated_at = NOW()
+      WHERE user_id = $1
+    `,
+    [userId, enabled]
+  );
+}
+
+async function saveSleepNotificationPreferencesFromDashboard(
+  userId: string,
+  input: {
+    enabled: boolean;
+    sleepStartTime: string | null;
+    sleepEndTime: string | null;
+    wakeStartTime: string | null;
+    wakeEndTime: string | null;
+  }
+): Promise<void> {
+  await ensureSleepNotificationPreferences(userId);
+  await pool.query(
+    `
+      UPDATE sleep_notification_preferences
+      SET
+        enabled = $2,
+        sleep_start_time = $3,
+        sleep_end_time = $4,
+        wake_start_time = $5,
+        wake_end_time = $6,
+        onboarding_step = CASE
+          WHEN $3::TIME IS NULL OR $4::TIME IS NULL THEN 'sleep'
+          WHEN $5::TIME IS NULL OR $6::TIME IS NULL THEN 'wake'
+          ELSE NULL
+        END,
+        updated_at = NOW()
+      WHERE user_id = $1
+    `,
+    [
+      userId,
+      input.enabled,
+      input.sleepStartTime,
+      input.sleepEndTime,
+      input.wakeStartTime,
+      input.wakeEndTime
+    ]
+  );
+}
+
+function buildSleepPreferenceLinkPrompt(preferences: SleepNotificationPreferences): string {
+  if (
+    preferences.sleepStartTime &&
+    preferences.sleepEndTime &&
+    preferences.wakeStartTime &&
+    preferences.wakeEndTime
+  ) {
+    return [
+      "Avisos automaticos ativos:",
+      `- deitar: ${formatClockRange(preferences.sleepStartTime, preferences.sleepEndTime)}`,
+      `- acordar: ${formatClockRange(preferences.wakeStartTime, preferences.wakeEndTime)}`,
+      "Podes alterar quando quiseres com `sono 23-01` ou `acordar 07-09`."
+    ].join("\n");
+  }
+
+  if (preferences.onboardingStep === "wake") {
+    return "Falta-me o intervalo em que costumas acordar. Podes dizer, por exemplo: `acordar 08-10`.";
+  }
+
+  return "Para uma melhor experiencia, diz-me o intervalo em que costumas deitar-te e acordar. Exemplo: `Dormir das 23 as 01 e acordo por volta das 08 as 10`.";
+}
+
+function buildSleepPreferenceStatusMessage(preferences: SleepNotificationPreferences): string {
+  const sleepRange =
+    preferences.sleepStartTime && preferences.sleepEndTime
+      ? formatClockRange(preferences.sleepStartTime, preferences.sleepEndTime)
+      : "por configurar";
+  const wakeRange =
+    preferences.wakeStartTime && preferences.wakeEndTime
+      ? formatClockRange(preferences.wakeStartTime, preferences.wakeEndTime)
+      : "por configurar";
+
+  return [
+    preferences.enabled ? "Avisos automaticos ligados." : "Avisos automaticos desligados.",
+    `Deitar: ${sleepRange}.`,
+    `Acordar: ${wakeRange}.`,
+    "Podes alterar com `sono 23-01`, `acordar 07-09`, `notificacoes off` ou `notificacoes on`."
+  ].join("\n");
+}
+
+function startNotificationScheduler(): void {
+  const run = async () => {
+    try {
+      await processSleepNotifications();
+    } catch (error) {
+      console.error("[dashboard-service] Erro no scheduler de notificacoes:", error);
+    }
+  };
+
+  void run();
+  setInterval(() => {
+    void run();
+  }, NOTIFICATION_SCHEDULER_INTERVAL_MS);
+}
+
+async function processSleepNotifications(): Promise<void> {
+  const localNow = getLocalDateTimeParts(new Date(), env.timezone);
+  const preferencesList = await listSleepNotificationPreferencesForScheduler();
+
+  for (const preferences of preferencesList) {
+    const primaryChat = await getRuntimeSettings(preferences.userId);
+    if (!primaryChat?.enabled || !primaryChat.conversationChannelId || !primaryChat.linkedUserId) {
+      continue;
+    }
+
+    if (
+      preferences.sleepStartTime &&
+      preferences.sleepEndTime &&
+      preferences.lastEveningSentOn !== localNow.date &&
+      isWithinPreferredWindow(preferences.sleepStartTime, preferences.sleepEndTime, localNow.minutes)
+    ) {
+      const message = await buildEveningNotificationMessage(preferences.userId, localNow.date);
+      if (message) {
+        await sendNotificationToChat(primaryChat, message);
+        await markSleepNotificationSent(preferences.userId, "evening", localNow.date);
+      }
+    }
+
+    if (
+      preferences.wakeStartTime &&
+      preferences.wakeEndTime &&
+      preferences.lastMorningSentOn !== localNow.date &&
+      isWithinPreferredWindow(preferences.wakeStartTime, preferences.wakeEndTime, localNow.minutes)
+    ) {
+      const message = await buildMorningNotificationMessage(preferences.userId, localNow.date);
+      if (message) {
+        await sendNotificationToChat(primaryChat, message);
+        await markSleepNotificationSent(preferences.userId, "morning", localNow.date);
+      }
+    }
+  }
+}
+
+async function listSleepNotificationPreferencesForScheduler(): Promise<SleepNotificationPreferences[]> {
+  const result = await pool.query<SleepNotificationPreferencesRow>(
+    `
+      SELECT
+        user_id,
+        enabled,
+        sleep_start_time,
+        sleep_end_time,
+        wake_start_time,
+        wake_end_time,
+        onboarding_step,
+        last_evening_sent_on::text AS last_evening_sent_on,
+        last_morning_sent_on::text AS last_morning_sent_on,
+        updated_at
+      FROM sleep_notification_preferences
+      WHERE enabled = TRUE
+        AND (
+          (sleep_start_time IS NOT NULL AND sleep_end_time IS NOT NULL)
+          OR (wake_start_time IS NOT NULL AND wake_end_time IS NOT NULL)
+        )
+    `
+  );
+
+  return result.rows.map(mapSleepNotificationPreferencesRow);
+}
+
+async function buildEveningNotificationMessage(userId: string, today: string): Promise<string | null> {
+  const tomorrow = addDaysIso(today, 1);
+  const afterTomorrow = addDaysIso(today, 2);
+  const threeDaysEnd = addDaysIso(today, 3);
+  const sevenDaysEnd = addDaysIso(today, 7);
+  const tomorrowEvents = await searchCalendarEventsForUser(userId, {
+    date: tomorrow,
+    limit: 20
+  });
+  let upcomingLabel = "nos proximos 3 dias";
+  let upcomingEvents = await searchCalendarEventsForUser(userId, {
+    dateFrom: afterTomorrow,
+    dateTo: threeDaysEnd,
+    limit: 20
+  });
+
+  if (upcomingEvents.length === 0) {
+    upcomingLabel = "nos proximos 7 dias";
+    upcomingEvents = await searchCalendarEventsForUser(userId, {
+      dateFrom: afterTomorrow,
+      dateTo: sevenDaysEnd,
+      limit: 30
+    });
+  }
+
+  if (tomorrowEvents.length === 0 && upcomingEvents.length === 0) {
+    return null;
+  }
+
+  const sections = ["Nao esquecer:"];
+  if (tomorrowEvents.length > 0) {
+    sections.push("", "Amanha tens:", ...formatEventLines(tomorrowEvents));
+  }
+
+  if (upcomingEvents.length > 0) {
+    sections.push("", `Tambem ${upcomingLabel}:`, ...formatEventLines(upcomingEvents, { includeDate: true }));
+  }
+
+  return sections.join("\n");
+}
+
+async function buildMorningNotificationMessage(userId: string, today: string): Promise<string | null> {
+  const events = await searchCalendarEventsForUser(userId, {
+    date: today,
+    limit: 20
+  });
+
+  if (events.length === 0) {
+    return null;
+  }
+
+  return ["Bom dia. Hoje tens:", ...formatEventLines(events)].join("\n");
+}
+
+async function searchCalendarEventsForUser(
+  userId: string,
+  filters: {
+    date?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    limit?: number;
+  }
+): Promise<CalendarEventSummary[]> {
+  const response = await fetch(`${env.calendarServiceUrl.replace(/\/$/, "")}/events/search`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      action: "search_events",
+      filters: {
+        ...filters,
+        userId
+      }
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Calendar Service respondeu com ${response.status} ${response.statusText}`);
+  }
+
+  const body = (await response.json()) as {
+    events?: CalendarEventSummary[];
+  };
+
+  return Array.isArray(body.events) ? body.events.sort(compareCalendarEventsByDateTime) : [];
+}
+
+async function sendNotificationToChat(settings: RuntimeSettings, message: string): Promise<void> {
+  const gatewayUrl =
+    settings.conversationPlatform === "telegram" ? env.telegramGatewayUrl : env.discordGatewayUrl;
+  const response = await fetch(`${gatewayUrl.replace(/\/$/, "")}/internal/send-message`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-internal-api-token": env.internalApiToken
+    },
+    body: JSON.stringify({
+      channelId: settings.conversationChannelId,
+      message
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Gateway ${settings.conversationPlatform} respondeu com ${response.status}`);
+  }
+}
+
+async function markSleepNotificationSent(
+  userId: string,
+  kind: "evening" | "morning",
+  localDate: string
+): Promise<void> {
+  await pool.query(
+    `
+      UPDATE sleep_notification_preferences
+      SET
+        last_evening_sent_on = CASE WHEN $2 = 'evening' THEN $3 ELSE last_evening_sent_on END,
+        last_morning_sent_on = CASE WHEN $2 = 'morning' THEN $3 ELSE last_morning_sent_on END,
+        updated_at = NOW()
+      WHERE user_id = $1
+    `,
+    [userId, kind, localDate]
+  );
+}
+
+function formatEventLines(
+  events: CalendarEventSummary[],
+  options: { includeDate?: boolean } = {}
+): string[] {
+  return events.map((event, index) => `${index + 1}. ${formatNotificationEvent(event, options)}`);
+}
+
+function formatNotificationEvent(
+  event: CalendarEventSummary,
+  options: { includeDate?: boolean }
+): string {
+  const timeLabel = event.allDay ? "dia todo" : event.startTime ? event.startTime.slice(0, 5) : "sem hora";
+  const dateLabel = options.includeDate ? `${formatShortDate(event.date)} - ` : "";
+  return `${dateLabel}${timeLabel} ${event.title}`.trim();
+}
+
+function compareCalendarEventsByDateTime(left: CalendarEventSummary, right: CalendarEventSummary): number {
+  const leftKey = `${left.date} ${left.startTime ?? "00:00"}`;
+  const rightKey = `${right.date} ${right.startTime ?? "00:00"}`;
+  return leftKey.localeCompare(rightKey);
+}
+
+function parseTimeRange(text: string): { start: string; end: string } | null {
+  const normalized = text
+    .toLowerCase()
+    .replace(/\bàs\b/g, "as")
+    .replace(/\bat[eé]\b/g, "-")
+    .replace(/\bdas\b/g, " ")
+    .replace(/\bda\b/g, " ")
+    .replace(/\s+/g, " ");
+  const match = normalized.match(/(\d{1,2})(?::?(\d{2}))?\s*(?:-|a|ate|as)\s*(\d{1,2})(?::?(\d{2}))?/);
+
+  if (!match) {
+    return null;
+  }
+
+  const start = normalizeClockParts(match[1], match[2]);
+  const end = normalizeClockParts(match[3], match[4]);
+  return start && end ? { start, end } : null;
+}
+
+function parseSleepWakeRanges(text: string): {
+  sleep: { start: string; end: string } | null;
+  wake: { start: string; end: string } | null;
+} {
+  const normalized = text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ");
+
+  return {
+    sleep: parseLabeledTimeRange(normalized, ["dormir", "sono", "deitar", "deito", "deitar-me"]),
+    wake: parseLabeledTimeRange(normalized, ["acordo", "acordar", "levanto", "levantar", "manha"])
+  };
+}
+
+function parseLabeledTimeRange(text: string, labels: string[]): { start: string; end: string } | null {
+  const escapedLabels = labels.map((label) => label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const labelPattern = `(?:${escapedLabels.join("|")})`;
+  const rangePattern = String.raw`(?:\bpor volta\b|\bdas\b|\bda\b|\bentre\b|\bde\b|\bas\b|\s)*(\d{1,2})(?::?(\d{2}))?\s*(?:-|a|ate|as)\s*(\d{1,2})(?::?(\d{2}))?`;
+  const match = text.match(new RegExp(`\\b${labelPattern}\\b.{0,40}?${rangePattern}`, "i"));
+
+  if (!match) {
+    return null;
+  }
+
+  const start = normalizeClockParts(match[1], match[2]);
+  const end = normalizeClockParts(match[3], match[4]);
+  return start && end ? { start, end } : null;
+}
+
+function normalizeClockParts(hourValue: string, minuteValue?: string): string | null {
+  const hour = Number(hourValue);
+  const minute = minuteValue ? Number(minuteValue) : 0;
+  if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+    return null;
+  }
+
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
+function normalizeClockInput(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const match = trimmed.match(/^(\d{1,2})(?::?(\d{2}))?(?::\d{2})?$/);
+  return match ? normalizeClockParts(match[1], match[2]) : null;
+}
+
+function formatClockRange(start: string, end: string): string {
+  return `${start.slice(0, 5)}-${end.slice(0, 5)}`;
+}
+
+function isWithinPreferredWindow(start: string, end: string, currentMinutes: number): boolean {
+  const startMinutes = clockToMinutes(start);
+  const endMinutes = clockToMinutes(end);
+  const totalMinutes = endMinutes > startMinutes ? endMinutes - startMinutes : endMinutes + 1440 - startMinutes;
+  const preferredMinutes = Math.max(1, Math.ceil(totalMinutes / 4));
+  let elapsedMinutes = currentMinutes - startMinutes;
+  if (elapsedMinutes < 0) {
+    elapsedMinutes += 1440;
+  }
+
+  return elapsedMinutes >= 0 && elapsedMinutes <= preferredMinutes;
+}
+
+function clockToMinutes(value: string): number {
+  const [hour = "0", minute = "0"] = value.slice(0, 5).split(":");
+  return Number(hour) * 60 + Number(minute);
+}
+
+function getLocalDateTimeParts(date: Date, timezone: string): { date: string; minutes: number } {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  }).formatToParts(date);
+  const part = (type: string) => parts.find((item) => item.type === type)?.value ?? "";
+  const hour = Number(part("hour")) % 24;
+  const minute = Number(part("minute"));
+
+  return {
+    date: `${part("year")}-${part("month")}-${part("day")}`,
+    minutes: hour * 60 + minute
+  };
+}
+
+function addDaysIso(date: string, days: number): string {
+  const [year, month, day] = date.split("-").map(Number);
+  const value = new Date(Date.UTC(year, month - 1, day));
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+
+function formatShortDate(date: string): string {
+  return new Intl.DateTimeFormat("pt-PT", {
+    day: "2-digit",
+    month: "2-digit"
+  }).format(new Date(`${date}T00:00:00Z`));
 }
 
 async function getAppleCalendarConnection(userId: string): Promise<AppleCalendarConnection | null> {
@@ -1560,8 +2503,12 @@ async function ensureSchema(): Promise<void> {
     CREATE TABLE IF NOT EXISTS dashboard_runtime_settings (
       id TEXT PRIMARY KEY,
       user_id TEXT NULL,
-      conversation_channel_id TEXT,
-      enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        conversation_platform TEXT NOT NULL DEFAULT 'discord',
+        conversation_channel_id TEXT,
+        enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        is_primary BOOLEAN NOT NULL DEFAULT FALSE,
+        linked_user_id TEXT,
+      linked_username TEXT,
       linked_discord_user_id TEXT,
       linked_discord_username TEXT,
       linked_at TIMESTAMPTZ,
@@ -1575,6 +2522,10 @@ async function ensureSchema(): Promise<void> {
   await pool.query(`
     ALTER TABLE dashboard_runtime_settings
       ADD COLUMN IF NOT EXISTS user_id TEXT NULL,
+      ADD COLUMN IF NOT EXISTS conversation_platform TEXT NOT NULL DEFAULT 'discord',
+      ADD COLUMN IF NOT EXISTS is_primary BOOLEAN NOT NULL DEFAULT FALSE,
+      ADD COLUMN IF NOT EXISTS linked_user_id TEXT,
+      ADD COLUMN IF NOT EXISTS linked_username TEXT,
       ADD COLUMN IF NOT EXISTS linked_discord_user_id TEXT,
       ADD COLUMN IF NOT EXISTS linked_discord_username TEXT,
       ADD COLUMN IF NOT EXISTS linked_at TIMESTAMPTZ,
@@ -1583,8 +2534,78 @@ async function ensureSchema(): Promise<void> {
   `);
 
   await pool.query(`
+    UPDATE dashboard_runtime_settings
+    SET
+      conversation_platform = COALESCE(conversation_platform, 'discord'),
+      linked_user_id = COALESCE(linked_user_id, linked_discord_user_id),
+      linked_username = COALESCE(linked_username, linked_discord_username)
+    WHERE linked_user_id IS NULL
+       OR linked_username IS NULL
+       OR conversation_platform IS NULL
+  `);
+
+  await pool.query(`
+    UPDATE dashboard_runtime_settings primary_candidate
+    SET is_primary = TRUE
+    WHERE primary_candidate.enabled = TRUE
+      AND primary_candidate.is_primary = FALSE
+      AND NOT EXISTS (
+        SELECT 1
+        FROM dashboard_runtime_settings existing_primary
+        WHERE existing_primary.user_id = primary_candidate.user_id
+          AND existing_primary.is_primary = TRUE
+      )
+      AND primary_candidate.id = (
+        SELECT newest_enabled.id
+        FROM dashboard_runtime_settings newest_enabled
+        WHERE newest_enabled.user_id = primary_candidate.user_id
+          AND newest_enabled.enabled = TRUE
+        ORDER BY newest_enabled.updated_at DESC
+        LIMIT 1
+      )
+  `);
+
+  await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_dashboard_runtime_settings_user
     ON dashboard_runtime_settings (user_id)
+  `);
+
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_dashboard_runtime_settings_user_platform
+    ON dashboard_runtime_settings (user_id, conversation_platform)
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_dashboard_runtime_settings_platform_conversation
+    ON dashboard_runtime_settings (conversation_platform, conversation_channel_id, linked_user_id)
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS sleep_notification_preferences (
+      user_id TEXT PRIMARY KEY,
+      enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      sleep_start_time TIME NULL,
+      sleep_end_time TIME NULL,
+      wake_start_time TIME NULL,
+      wake_end_time TIME NULL,
+      onboarding_step TEXT NULL,
+      last_evening_sent_on DATE NULL,
+      last_morning_sent_on DATE NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await pool.query(`
+    ALTER TABLE sleep_notification_preferences
+      ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      ADD COLUMN IF NOT EXISTS sleep_start_time TIME NULL,
+      ADD COLUMN IF NOT EXISTS sleep_end_time TIME NULL,
+      ADD COLUMN IF NOT EXISTS wake_start_time TIME NULL,
+      ADD COLUMN IF NOT EXISTS wake_end_time TIME NULL,
+      ADD COLUMN IF NOT EXISTS onboarding_step TEXT NULL,
+      ADD COLUMN IF NOT EXISTS last_evening_sent_on DATE NULL,
+      ADD COLUMN IF NOT EXISTS last_morning_sent_on DATE NULL;
   `);
 
   await pool.query(`
@@ -1863,15 +2884,14 @@ async function deleteDashboardUser(currentUser: AppUser, targetUserId: string | 
 
   const settings = await getRuntimeSettings(targetUser.id);
 
-  if (settings?.linkedDiscordUserId) {
-    await requestCalendarUserPurge(settings.linkedDiscordUserId);
-  }
+  await requestCalendarUserPurge(targetUser.id);
 
   if (settings?.conversationChannelId) {
     await requestOrchestratorConversationPurge(settings.conversationChannelId);
   }
 
   await pool.query(`DELETE FROM dashboard_runtime_settings WHERE user_id = $1`, [targetUser.id]);
+  await pool.query(`DELETE FROM sleep_notification_preferences WHERE user_id = $1`, [targetUser.id]);
   await pool.query(`DELETE FROM apple_calendar_connections WHERE user_id = $1`, [targetUser.id]);
   await pool.query(`DELETE FROM google_calendar_connections WHERE user_id = $1`, [targetUser.id]);
   await pool.query(`DELETE FROM notion_connections WHERE user_id = $1`, [targetUser.id]);
@@ -1926,13 +2946,57 @@ async function requestOrchestratorConversationPurge(channelId: string): Promise<
   }
 }
 
-async function readBody(request: IncomingMessage): Promise<string> {
+async function readBody(
+  request: IncomingMessage,
+  maxBytes = MAX_REQUEST_BODY_BYTES
+): Promise<string> {
+  const contentLength = Number(request.headers["content-length"] ?? "");
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+    throw new HttpError(413, "Pedido demasiado grande.");
+  }
+
   const chunks: Buffer[] = [];
+  let totalBytes = 0;
   for await (const chunk of request) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    totalBytes += buffer.byteLength;
+    if (totalBytes > maxBytes) {
+      throw new HttpError(413, "Pedido demasiado grande.");
+    }
+    chunks.push(buffer);
   }
 
   return Buffer.concat(chunks).toString("utf-8");
+}
+
+function verifyNotionWebhookSignature(
+  rawBody: string,
+  signatureHeader: string | string[] | undefined
+): void {
+  const verificationToken = env.notionWebhookVerificationToken.trim();
+  if (!verificationToken) {
+    throw new HttpError(503, "Webhook Notion sem segredo de verificação configurado.");
+  }
+
+  const signature = getHeaderValue(signatureHeader);
+  if (!signature) {
+    if (isValidNotionWebhookSignature(rawBody, undefined, verificationToken)) {
+      return;
+    }
+    throw new HttpError(401, "Assinatura do webhook Notion em falta.");
+  }
+
+  if (!isValidNotionWebhookSignature(rawBody, signature, verificationToken)) {
+    throw new HttpError(401, "Assinatura do webhook Notion inválida.");
+  }
+}
+
+function getHeaderValue(value: string | string[] | undefined): string | undefined {
+  if (Array.isArray(value)) {
+    return value[0];
+  }
+
+  return value;
 }
 
 function parseFormBody(body: string): Record<string, string> {
@@ -2199,10 +3263,13 @@ async function forwardNotionWebhook(
   rawBody: string,
   headers: IncomingMessage["headers"]
 ): Promise<void> {
+  const notionSignature = getHeaderValue(headers["x-notion-signature"]);
   const response = await fetch(`${env.notionConnectorUrl}/providers/notion/webhook`, {
     method: "POST",
     headers: {
-      "content-type": headers["content-type"] ?? "application/json; charset=utf-8"
+      "content-type": headers["content-type"] ?? "application/json; charset=utf-8",
+      "x-internal-token": env.internalApiToken,
+      ...(notionSignature ? { "x-notion-signature": notionSignature } : {})
     },
     body: rawBody
   });
@@ -2216,10 +3283,12 @@ function renderDashboardVuePage(
   currentUser: AppUser,
   users: AppUser[],
   settings: RuntimeSettings | null,
+  chatLinks: RuntimeChatLinks,
   activeLinkCode: { code: string; expiresAt: string } | null,
   appleConnection: AppleCalendarConnection | null,
   googleConnection: GoogleCalendarConnection | null,
   notionConnection: NotionConnection | null,
+  notificationPreferences: SleepNotificationPreferences,
   botIdentity: DiscordBotIdentity | null,
   searchParams: URLSearchParams
 ): string {
@@ -2227,6 +3296,7 @@ function renderDashboardVuePage(
   const canManageUsers = currentUser.role === "admin";
   const activeTab =
     requestedTab === "apple" ||
+    requestedTab === "telegram" ||
     requestedTab === "google" ||
     requestedTab === "notion" ||
     (canManageUsers && requestedTab === "users")
@@ -2298,10 +3368,12 @@ function renderDashboardVuePage(
       currentUser,
       users,
       settings,
+      chatLinks,
       activeLinkCode,
       appleConnection,
       googleConnection,
       notionConnection,
+      notificationPreferences,
       botIdentity,
       activeTab,
       flashMessage,
@@ -2378,6 +3450,7 @@ function renderDashboardPage(
   const canManageUsers = currentUser.role === "admin";
   const activeTab =
     requestedTab === "apple" ||
+    requestedTab === "telegram" ||
     requestedTab === "google" ||
     requestedTab === "notion" ||
     (canManageUsers && requestedTab === "users")
@@ -2385,7 +3458,7 @@ function renderDashboardPage(
       : "discord";
   const generated = searchParams.get("generated") === "1";
   const unlinked = searchParams.get("unlinked") === "1";
-  const hasLinkedState = Boolean(settings?.enabled && settings?.conversationChannelId && settings?.linkedDiscordUserId);
+  const hasLinkedState = Boolean(settings?.enabled && settings?.conversationChannelId && settings?.linkedUserId);
   const botLabel = botIdentity?.globalName?.trim()
     ? `${botIdentity.globalName} (${botIdentity.username})`
     : botIdentity?.username ?? "Bot do Discord";
@@ -2397,7 +3470,7 @@ function renderDashboardPage(
   const botAvatar = botIdentity?.avatarUrl
     ? `<img class="bot-avatar" src="${escapeHtml(botIdentity.avatarUrl)}" alt="Avatar do bot" />`
     : "";
-  const linkedUserLabel = settings?.linkedDiscordUsername?.trim() || settings?.linkedDiscordUserId || "Desconhecido";
+  const linkedUserLabel = settings?.linkedUsername?.trim() || settings?.linkedUserId || "Desconhecido";
   const codeExpiresLabel = activeLinkCode
     ? new Date(activeLinkCode.expiresAt).toLocaleString("pt-PT", {
         dateStyle: "short",

@@ -60,15 +60,10 @@ class HttpError extends Error {
 
 const env = {
   port: Number(process.env.APPLE_CONNECTOR_PORT ?? "8006"),
-  postgresUrl:
-    process.env.POSTGRES_URL ??
-    "postgres://agentpulse:agentpulse_dev_password@postgres:5432/agentpulse",
-  configPostgresUrl:
-    process.env.CONFIG_POSTGRES_URL ??
-    "postgres://agentpulse_config:agentpulse_config_password@config-postgres:5432/agentpulse_config",
+  postgresUrl: process.env.POSTGRES_URL ?? "",
+  configPostgresUrl: process.env.CONFIG_POSTGRES_URL ?? "",
   configEncryptionKey: process.env.CONFIG_ENCRYPTION_KEY ?? "",
-  internalApiToken:
-    process.env.DASHBOARD_INTERNAL_API_TOKEN ?? "pulse_dashboard_internal_token_change_me",
+  internalApiToken: process.env.DASHBOARD_INTERNAL_API_TOKEN ?? "",
   timezone: process.env.APP_TIMEZONE ?? "Europe/Lisbon",
   appleCaldavUrl: process.env.APPLE_CALDAV_URL ?? "https://caldav.icloud.com",
   appleSyncIntervalMs: Number(process.env.APPLE_SYNC_INTERVAL_MS ?? "300000"),
@@ -526,6 +521,10 @@ function normalizeLooseText(value: string): string {
 }
 
 function validateEnv(): void {
+  if (!env.internalApiToken) {
+    throw new Error("DASHBOARD_INTERNAL_API_TOKEN é obrigatória.");
+  }
+
   if (Number.isNaN(env.port) || env.port < 1 || env.port > 65535) {
     throw new Error("APPLE_CONNECTOR_PORT deve ser um n�mero v�lido.");
   }

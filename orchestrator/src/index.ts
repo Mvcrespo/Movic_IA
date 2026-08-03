@@ -7,7 +7,7 @@ import {
 } from "node:http";
 import { Pool } from "pg";
 
-type DiscordMessageInput = {
+type ChatMessageInput = {
   source: string;
   channelId: string;
   userId: string;
@@ -331,15 +331,13 @@ type ProcessMessageResult = {
 };
 
 type DebugMessageRequest = {
-  message: DiscordMessageInput;
+  message: ChatMessageInput;
   options?: Partial<MessageProcessingOptions>;
 };
 
 const env = {
   port: Number(process.env.ORCHESTRATOR_PORT ?? "8000"),
-  postgresUrl:
-    process.env.POSTGRES_URL ??
-    "postgres://agentpulse:agentpulse_dev_password@postgres:5432/agentpulse",
+  postgresUrl: process.env.POSTGRES_URL ?? "",
   llmServiceUrl: process.env.LLM_SERVICE_URL ?? "http://llm-service:8001",
   normalizerServiceUrl:
     process.env.NORMALIZER_SERVICE_URL ?? "http://normalizer-service:8002",
@@ -349,8 +347,7 @@ const env = {
     process.env.EXTRACTOR_SERVICE_URL ?? "http://extractor-service:8004",
   validatorServiceUrl:
     process.env.VALIDATOR_SERVICE_URL ?? "http://validator-service:8005",
-  internalApiToken:
-    process.env.DASHBOARD_INTERNAL_API_TOKEN ?? "pulse_dashboard_internal_token_change_me",
+  internalApiToken: process.env.DASHBOARD_INTERNAL_API_TOKEN ?? "",
   historyLimit: Number(process.env.ORCHESTRATOR_HISTORY_LIMIT ?? "12"),
   contextTtlMs: Number(process.env.ORCHESTRATOR_CONTEXT_TTL_MS ?? `${20 * 60 * 1000}`),
   timezone: process.env.APP_TIMEZONE ?? "Europe/Lisbon",
@@ -399,7 +396,7 @@ const server = createServer(async (request, response) => {
     }
 
     if (method === "POST" && path === "/messages") {
-      const payload = (await readJsonBody(request)) as DiscordMessageInput;
+      const payload = (await readJsonBody(request)) as ChatMessageInput;
 
       validateMessagePayload(payload);
       const result = await processMessagePayload(payload, {
@@ -569,7 +566,7 @@ function filterConversationHistoryToRecentWindow(
 }
 
 async function processMessagePayload(
-  payload: DiscordMessageInput,
+  payload: ChatMessageInput,
   options: MessageProcessingOptions
 ): Promise<ProcessMessageResult> {
   const processingStartedAt = Date.now();
@@ -945,7 +942,7 @@ async function processMessagePayload(
 }
 
 async function callLlmService(
-  message: DiscordMessageInput,
+  message: ChatMessageInput,
   pendingCommand: PendingCommand | null,
   fullHistory: ConversationMessage[]
 ): Promise<LlmInterpretation> {
@@ -954,7 +951,7 @@ async function callLlmService(
 }
 
 async function callLlmServiceWithTrace(
-  message: DiscordMessageInput,
+  message: ChatMessageInput,
   pendingCommand: PendingCommand | null,
   fullHistory: ConversationMessage[]
 ): Promise<{
@@ -1037,7 +1034,7 @@ async function callLlmServiceWithTrace(
       context: {
         app: "AI Personal Calendar Agent",
         assistantName: "Pulse",
-        channelType: "discord-dm",
+        channelType: message.source,
         allowedCommands,
         responseLanguage: "auto",
         outputSchemaVersion: "1.0",
@@ -1426,7 +1423,7 @@ function shouldUseCreateEventMultiAgent(
 }
 
 async function buildCreateEventInterpretationWithAgents(
-  message: DiscordMessageInput,
+  message: ChatMessageInput,
   pendingCommand: PendingCommand | null,
   history: ConversationMessage[],
   planner: LlmInterpretation
@@ -1442,7 +1439,7 @@ async function buildCreateEventInterpretationWithAgents(
 }
 
 async function buildCreateEventInterpretationWithAgentsDetailed(
-  message: DiscordMessageInput,
+  message: ChatMessageInput,
   pendingCommand: PendingCommand | null,
   history: ConversationMessage[],
   planner: LlmInterpretation
@@ -1861,7 +1858,7 @@ function seedAgentInterpretationFromPlanner(
   };
 }
 
-async function buildMultiAgentContext(message: DiscordMessageInput): Promise<MultiAgentContext> {
+async function buildMultiAgentContext(message: ChatMessageInput): Promise<MultiAgentContext> {
   const now = getTimeContext(resolveReferenceTime(message.timestamp));
   const normalization = await callNormalizerService(message.content, now);
   const temporalHints = resolveTemporalHintsFromExpressions(
@@ -1872,7 +1869,7 @@ async function buildMultiAgentContext(message: DiscordMessageInput): Promise<Mul
   return {
     app: "AI Personal Calendar Agent",
     assistantName: "Pulse",
-    channelType: "discord-dm",
+    channelType: message.source,
     allowedCommands,
     responseLanguage: "auto",
     outputSchemaVersion: "1.0",
@@ -1886,7 +1883,7 @@ async function buildMultiAgentContext(message: DiscordMessageInput): Promise<Mul
 }
 
 async function callExtractorService(
-  message: DiscordMessageInput,
+  message: ChatMessageInput,
   history: ConversationMessage[],
   pendingCommand: PendingCommand | null,
   planner: LlmInterpretation,
@@ -1927,7 +1924,7 @@ async function callExtractorService(
 }
 
 async function callValidatorService(
-  message: DiscordMessageInput,
+  message: ChatMessageInput,
   history: ConversationMessage[],
   pendingCommand: PendingCommand | null,
   planner: LlmInterpretation,
@@ -2056,7 +2053,7 @@ function shouldUpdateCalendarEvents(interpretation: LlmInterpretation): boolean 
 }
 
 async function createCalendarEvent(
-  message: DiscordMessageInput,
+  message: ChatMessageInput,
   extractedData: Record<string, unknown>
 ): Promise<CalendarCreateEventResponse> {
   const response = await fetch(`${env.calendarServiceUrl.replace(/\/$/, "")}/events`, {
@@ -2120,7 +2117,7 @@ function shouldCreateCalendarBatch(interpretation: LlmInterpretation): boolean {
 }
 
 async function createCalendarBatch(
-  message: DiscordMessageInput,
+  message: ChatMessageInput,
   extractedData: Record<string, unknown>
 ): Promise<{
   reply: string;
@@ -2147,7 +2144,7 @@ async function createCalendarBatch(
 }
 
 async function searchCalendarEvents(
-  message: DiscordMessageInput,
+  message: ChatMessageInput,
   filters: CalendarSearchFilters,
   options: MessageProcessingOptions
 ): Promise<CalendarEventSummary[]> {
@@ -2236,7 +2233,7 @@ async function updateCalendarEvents(
 }
 
 function normalizeInterpretation(
-  message: DiscordMessageInput,
+  message: ChatMessageInput,
   interpretation: LlmInterpretation,
   pending: PendingCommand | null,
   normalizedMessageContent?: string
@@ -2522,7 +2519,7 @@ function applyExplicitDurationFallback(
 }
 
 function shouldHandleAdvancedCreateEvent(
-  message: DiscordMessageInput,
+  message: ChatMessageInput,
   interpretation: LlmInterpretation,
   pending: PendingCommand | null
 ): boolean {
@@ -2543,7 +2540,7 @@ function shouldHandleAdvancedCreateEvent(
 }
 
 function resolveAdvancedCreateEventInterpretation(
-  message: DiscordMessageInput,
+  message: ChatMessageInput,
   interpretation: LlmInterpretation,
   pending: PendingCommand | null
 ): LlmInterpretation {
@@ -3602,7 +3599,7 @@ function joinNaturalList(values: string[]): string {
 }
 
 function shouldHandleUpdateEvent(
-  message: DiscordMessageInput,
+  message: ChatMessageInput,
   interpretation: LlmInterpretation,
   pending: PendingCommand | null,
   normalizedMessageContent?: string
@@ -3615,7 +3612,7 @@ function shouldHandleUpdateEvent(
 }
 
 async function resolveUpdateEventInterpretation(
-  message: DiscordMessageInput,
+  message: ChatMessageInput,
   interpretation: LlmInterpretation,
   pending: PendingCommand | null,
   options: MessageProcessingOptions,
@@ -4690,7 +4687,7 @@ function shouldHandleListEvents(
 }
 
 async function resolveListEventsInterpretation(
-  message: DiscordMessageInput,
+  message: ChatMessageInput,
   interpretation: LlmInterpretation,
   pending: PendingCommand | null,
   options: MessageProcessingOptions,
@@ -5286,7 +5283,7 @@ function shouldHandleDeleteEvent(
 }
 
 async function resolveDeleteEventInterpretation(
-  message: DiscordMessageInput,
+  message: ChatMessageInput,
   interpretation: LlmInterpretation,
   pending: PendingCommand | null,
   options: MessageProcessingOptions
@@ -6380,7 +6377,7 @@ function isNegativePhrase(text: string): boolean {
 }
 
 function applyPendingFieldAnswerHeuristics(
-  message: DiscordMessageInput,
+  message: ChatMessageInput,
   interpretation: LlmInterpretation,
   pending: PendingCommand | null
 ): LlmInterpretation {
@@ -8937,7 +8934,7 @@ function normalizeSentenceCase(value: string): string {
 }
 
 async function updatePendingCommand(
-  message: DiscordMessageInput,
+  message: ChatMessageInput,
   interpretation: LlmInterpretation
 ): Promise<void> {
   const shouldStorePending =
@@ -10169,7 +10166,7 @@ async function readJsonBody(request: IncomingMessage): Promise<unknown> {
   }
 }
 
-function validateMessagePayload(payload: unknown): asserts payload is DiscordMessageInput {
+function validateMessagePayload(payload: unknown): asserts payload is ChatMessageInput {
   if (!payload || typeof payload !== "object") {
     throw new Error("Payload de mensagem invalido.");
   }
@@ -10254,5 +10251,4 @@ function validateEnv(): void {
     throw new Error("APP_TIMEZONE e obrigatoria.");
   }
 }
-
 

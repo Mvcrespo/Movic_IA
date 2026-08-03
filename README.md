@@ -76,6 +76,7 @@ Copy-Item .env.example .env
 - `CONFIG_ENCRYPTION_KEY`: chave usada para cifrar credenciais de integrações.
 - `DEFAULT_ADMIN_EMAIL`: email da conta admin inicial.
 - `DEFAULT_ADMIN_PASSWORD`: password temporária da conta admin inicial.
+- `POSTGRES_URL` e `CONFIG_POSTGRES_URL`: URLs completas das duas bases de dados, sem valores predefinidos no código.
 
 Para `DASHBOARD_INTERNAL_API_TOKEN` e `CONFIG_ENCRYPTION_KEY`, usa dois valores longos e diferentes. Em PowerShell, podes gerar cada valor com:
 
@@ -125,6 +126,37 @@ Este `signin` deve ser feito no container Docker com Ollama, não no utilizador 
 
 Se não fizeres esse passo, o `docker compose` pode até conseguir fazer `pull` do modelo, mas depois os pedidos reais para `/api/chat` podem falhar com `401 Unauthorized`.
 
+## Modo hibrido Ollama local + Ollama Cloud
+
+A stack suporta escolher o destino do Ollama por servico. A configuracao recomendada para producao na VM e:
+
+```env
+OLLAMA_BASE_URL=http://ollama:11434
+OLLAMA_API_KEY=
+
+LLM_OLLAMA_BASE_URL=https://ollama.com
+LLM_OLLAMA_MODEL=gpt-oss:120b-cloud
+LLM_OLLAMA_API_KEY=...
+LLM_OLLAMA_AUTO_PULL=false
+
+EXTRACTOR_OLLAMA_BASE_URL=https://ollama.com
+EXTRACTOR_OLLAMA_MODEL=gpt-oss:120b-cloud
+EXTRACTOR_OLLAMA_API_KEY=...
+EXTRACTOR_OLLAMA_AUTO_PULL=false
+
+NORMALIZER_OLLAMA_BASE_URL=http://ollama:11434
+NORMALIZER_OLLAMA_MODEL=qwen2.5:3b
+NORMALIZER_OLLAMA_API_KEY=
+NORMALIZER_AUTO_PULL=true
+
+VALIDATOR_OLLAMA_BASE_URL=http://ollama:11434
+VALIDATOR_OLLAMA_MODEL=qwen2.5:3b
+VALIDATOR_OLLAMA_API_KEY=
+VALIDATOR_AUTO_PULL=true
+```
+
+Neste modo, `llm-service` e `extractor-service` usam Ollama Cloud com `Authorization: Bearer ...`, enquanto `normalizer-service` e `validator-service` ficam no Ollama local da VM. Quando um servico usa Ollama Cloud com API key, a stack nao tenta fazer `pull` do modelo nesse servico.
+
 ## Variáveis do `.env`
 
 O `.env.example` já vem alinhado com a stack atual e dividido por grupos:
@@ -149,6 +181,7 @@ O `.env.example` já vem alinhado com a stack atual e dividido por grupos:
 
 - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`: só são necessárias para ativar Google Calendar.
 - `NOTION_CLIENT_ID`, `NOTION_CLIENT_SECRET`, `NOTION_REDIRECT_URI`: só são necessárias para ativar Notion.
+- `NOTION_WEBHOOK_VERIFICATION_TOKEN`: token recebido na verificação do webhook Notion; necessário para aceitar eventos.
 - `CLOUDFLARE_TUNNEL_TOKEN`: só é necessária se quiseres arrancar o `cloudflared` no `docker compose`.
 
 ### Variáveis úteis mas opcionais
@@ -237,6 +270,18 @@ Ver apenas o túnel Cloudflare:
 docker compose logs -f cloudflared
 ```
 
+Abrir portas internas apenas para desenvolvimento local. O override fica limitado a `127.0.0.1` e não deve ser usado para expor a VM na rede:
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.dev-ports.yml up -d --build
+```
+
+Ativar GPU para o Ollama local, quando o driver NVIDIA e o NVIDIA Container Toolkit estiverem prontos:
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
+```
+
 Parar tudo:
 
 ```powershell
@@ -316,7 +361,9 @@ docker compose logs --since=1m normalizer-service llm-service extractor-service 
 ## Notas importantes
 
 - O `.env` real não deve ser versionado.
-- O `.env.example` foi preparado para servir de ponto de partida funcional da stack atual.
+- O `.env.example` contém campos sensíveis vazios de propósito; preenche-os no `.env` local e nunca versões esse ficheiro.
+- Por defeito, o `docker-compose.yml` não publica portas da aplicação no host. A dashboard fica acessível pelo Cloudflare Tunnel, e Postgres, Ollama, orchestrator e serviços internos ficam protegidos dentro da rede Docker. Usa `docker-compose.dev-ports.yml` apenas para depurar localmente em `127.0.0.1`.
+- A GPU do Ollama local fica num override separado (`docker-compose.gpu.yml`) para a stack continuar a arrancar mesmo quando a VM ainda não tem driver/runtime NVIDIA pronto.
 - Com `OLLAMA_AUTO_PULL=true`, `NORMALIZER_AUTO_PULL=true`, `EXTRACTOR_AUTO_PULL=true` e `VALIDATOR_AUTO_PULL=true`, os serviços tentam descarregar automaticamente o modelo local no primeiro arranque. Depois de o modelo existir no volume do `ollama`, os arranques seguintes tendem a ser bem mais rápidos.
 - Os conectores Google e Notion arrancam sem OAuth real, mas só conseguem ligar contas quando preencheres as credenciais certas.
 - A ligação Apple depende do email Apple e da app-specific password introduzidos depois na dashboard.

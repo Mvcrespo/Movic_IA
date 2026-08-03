@@ -75,6 +75,11 @@ type DashboardRuntimeLink = {
   linkedDiscordUserId: string | null;
   linkedDiscordUsername: string | null;
   conversationChannelId: string | null;
+  // Id canonico a usar como source_user_id ao importar eventos remotos.
+  primarySourceUserId: string | null;
+  // Todos os ids que pertencem a este utilizador da dashboard (UUID + ids
+  // ligados de qualquer plataforma), usados para decidir a quem pertence um evento.
+  ownedSourceUserIds: string[];
 };
 
 type GoogleRemoteEvent = {
@@ -894,7 +899,11 @@ async function getEnabledGoogleConnectionForDiscordUser(
       WHERE gc.enabled = TRUE
         AND gc.account_email IS NOT NULL
         AND gc.refresh_token_encrypted IS NOT NULL
-        AND drs.linked_discord_user_id = $1
+        AND (
+          drs.linked_discord_user_id = $1
+          OR drs.linked_user_id = $1
+          OR gc.user_id = $1
+        )
       ORDER BY gc.updated_at DESC
       LIMIT 1
     `,
@@ -1600,7 +1609,7 @@ async function insertStoredEventFromRemote(
       ),
       "google-calendar",
       runtimeLink?.conversationChannelId ?? null,
-      runtimeLink?.linkedDiscordUserId ?? null,
+      runtimeLink?.primarySourceUserId ?? null,
       runtimeLink?.linkedDiscordUsername ?? null,
       remoteEvent.timezone
     ]
@@ -1619,7 +1628,7 @@ async function applyRemoteEventToLocal(
   const sourceChannelId =
     existingLocalEvent?.sourceChannelId ?? runtimeLink?.conversationChannelId ?? null;
   const sourceUserId =
-    existingLocalEvent?.sourceUserId ?? runtimeLink?.linkedDiscordUserId ?? null;
+    existingLocalEvent?.sourceUserId ?? runtimeLink?.primarySourceUserId ?? null;
   const sourceUsername =
     existingLocalEvent?.sourceUsername ?? runtimeLink?.linkedDiscordUsername ?? null;
 
@@ -1693,30 +1702,49 @@ async function getDashboardRuntimeLink(
   try {
     const result = await configPool.query(
       `
-        SELECT linked_discord_user_id, linked_discord_username, conversation_channel_id
+        SELECT linked_discord_user_id, linked_user_id, linked_discord_username, conversation_channel_id
         FROM dashboard_runtime_settings
         WHERE enabled = TRUE
           AND user_id = $1
           AND conversation_channel_id IS NOT NULL
-          AND linked_discord_user_id IS NOT NULL
         ORDER BY updated_at DESC
-        LIMIT 1
       `,
       [userId]
     );
 
-    const row = result.rows[0] as Record<string, unknown> | undefined;
-    if (!row) {
+    const rows = result.rows as Record<string, unknown>[];
+    if (rows.length === 0) {
       return null;
     }
 
+    const asString = (value: unknown): string | null =>
+      typeof value === "string" && value.length > 0 ? value : null;
+
+    // O id da conta do utilizador (UUID) tambem conta como dono dos eventos,
+    // porque alguns gateways (ex.: Telegram) gravam source_user_id = UUID.
+    const ownedSourceUserIds = new Set<string>([userId]);
+    for (const row of rows) {
+      const discordId = asString(row.linked_discord_user_id);
+      const linkedId = asString(row.linked_user_id);
+      if (discordId) {
+        ownedSourceUserIds.add(discordId);
+      }
+      if (linkedId) {
+        ownedSourceUserIds.add(linkedId);
+      }
+    }
+
+    const firstRow = rows[0];
+    // Carimbamos eventos importados do remoto sempre com o UUID da conta, para
+    // manter uma identidade unica de source_user_id em todo o sistema.
+    const primarySourceUserId = userId;
+
     return {
-      linkedDiscordUserId:
-        typeof row.linked_discord_user_id === "string" ? row.linked_discord_user_id : null,
-      linkedDiscordUsername:
-        typeof row.linked_discord_username === "string" ? row.linked_discord_username : null,
-      conversationChannelId:
-        typeof row.conversation_channel_id === "string" ? row.conversation_channel_id : null
+      linkedDiscordUserId: asString(firstRow.linked_discord_user_id),
+      linkedDiscordUsername: asString(firstRow.linked_discord_username),
+      conversationChannelId: asString(firstRow.conversation_channel_id),
+      primarySourceUserId,
+      ownedSourceUserIds: [...ownedSourceUserIds]
     };
   } catch {
     return null;
@@ -1727,12 +1755,13 @@ function filterEventsForRuntimeUser(
   events: LocalCalendarEvent[],
   runtimeLink: DashboardRuntimeLink | null
 ): LocalCalendarEvent[] {
-  const linkedDiscordUserId = runtimeLink?.linkedDiscordUserId ?? null;
-  if (!linkedDiscordUserId) {
+  const ownedIds = runtimeLink?.ownedSourceUserIds ?? [];
+  if (ownedIds.length === 0) {
     return [];
   }
 
-  return events.filter((event) => event.sourceUserId === linkedDiscordUserId);
+  const owned = new Set(ownedIds);
+  return events.filter((event) => event.sourceUserId != null && owned.has(event.sourceUserId));
 }
 
 function filterSingleEventForRuntimeUser(
@@ -1743,12 +1772,12 @@ function filterSingleEventForRuntimeUser(
     return null;
   }
 
-  const linkedDiscordUserId = runtimeLink?.linkedDiscordUserId ?? null;
-  if (!linkedDiscordUserId) {
+  const ownedIds = runtimeLink?.ownedSourceUserIds ?? [];
+  if (ownedIds.length === 0) {
     return null;
   }
 
-  return event.sourceUserId === linkedDiscordUserId ? event : null;
+  return event.sourceUserId != null && ownedIds.includes(event.sourceUserId) ? event : null;
 }
 
 function mapStoredEvent(row: Record<string, unknown>): LocalCalendarEvent {

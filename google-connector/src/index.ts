@@ -32,15 +32,10 @@ type CategoryDefinition = {
 
 const env = {
   port: Number(process.env.GOOGLE_CONNECTOR_PORT ?? "8007"),
-  postgresUrl:
-    process.env.POSTGRES_URL ??
-    "postgres://agentpulse:agentpulse_dev_password@postgres:5432/agentpulse",
-  configPostgresUrl:
-    process.env.CONFIG_POSTGRES_URL ??
-    "postgres://agentpulse_config:agentpulse_config_password@config-postgres:5432/agentpulse_config",
+  postgresUrl: process.env.POSTGRES_URL ?? "",
+  configPostgresUrl: process.env.CONFIG_POSTGRES_URL ?? "",
   configEncryptionKey: process.env.CONFIG_ENCRYPTION_KEY ?? "",
-  internalApiToken:
-    process.env.DASHBOARD_INTERNAL_API_TOKEN ?? "pulse_dashboard_internal_token_change_me",
+  internalApiToken: process.env.DASHBOARD_INTERNAL_API_TOKEN ?? "",
   timezone: process.env.APP_TIMEZONE ?? "Europe/Lisbon",
   googleClientId: process.env.GOOGLE_CLIENT_ID ?? "",
   googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
