@@ -2,6 +2,21 @@
 
 Movic IA is a platform for orchestrating Discord conversations, managing events in a local database, and synchronizing external integrations through a modern web dashboard. The current stack combines a Discord bot, an AI orchestrator, a local calendar hub, and connectors for Apple Calendar, Google Calendar, and Notion.
 
+> Open-source AI assistant for managing calendars and productivity tools through Discord.
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+## Project status
+
+Movic IA is an evolving personal project. The current public baseline is `v0.1.0`; see the [roadmap](ROADMAP.md) for planned improvements.
+
+## Repository guides
+
+- [Contributing](CONTRIBUTING.md)
+- [Security policy](SECURITY.md)
+- [Roadmap](ROADMAP.md)
+- [MIT License](LICENSE)
+
 ## What the project does today
 
 - Receives direct Discord messages in real time.
